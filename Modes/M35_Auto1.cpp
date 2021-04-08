@@ -366,160 +366,61 @@ RTL:
 				switch( mission_ind )
 				{
 					case 0:
-					{	//起飞
-						double params[7];
-						params[0] = 0;
-						params[3] = nan("");
-						params[4] = 0;	params[5] = 0;
-						params[6] = 0.5;
-						int16_t res = Process_NavCmd( MAV_CMD_NAV_TAKEOFF, freq, MAV_FRAME_BODY_FLU, params, &navInf );
-						if( NavCmdRs_SuccessOrFault(res) )
-						{	//起飞完成
-							init_NavCmdInf(&navInf);
-							++mission_ind;
-						}
-						break;
-					}
-					
-					case 1:
-					{	//巡线
-//						double vec[3];
-//						vec[0] = msg.cmd;
-//						vec[1] = msg.params[0];
-//						vec[2] = msg.params[1];
-//						SDLog_Msg_DebugVect("xun",vec,3);
-						
-						Position_Control_set_ZLock();
+					{	
 						if(msg_available)
 						{		
-							if( msg.cmd == 2 )
-							{
-								if(msg.params[0]!=200)
+								if(msg.cmd == MAV_CMD_NAV_TAKEOFF)//起飞
 								{
-//									//roll角
-//									Quaternion quat;
-//									get_history_AirframeQuatY(&quat,0.1);
-//									double roll = quat.getRoll();
-//									//对地高度
-//									double height = 100;
-//									PosSensorHealthInf1 ZRange_inf;
-//									if( get_OptimalRange_Z( &ZRange_inf ) )
-//									{	//测距传感器可用
-//										if( ZRange_inf.last_healthy_TIME.is_valid() && ZRange_inf.last_healthy_TIME.get_pass_time() < 50 )
-//										{	//测距50秒内健康
-//											//获取高度
-//											height = ZRange_inf.HOffset + ZRange_inf.PositionENU.z;
-//										}
-//									}
-//									//倾角补偿
-//									double
-									
-									//逆时针为正角度误差（度）
-									double angle_err = -msg.params[0];
-									double angle_err_rad = degree2rad(angle_err);
-									//距离误差向左为正（无单位）
-									double pos_err = -msg.params[1];
-									//修正偏航头朝直线
-									Attitude_Control_set_Target_YawRate( degree2rad(constrain( angle_err, 70.0 ) ));
-									//求巡线压线修正速度
-									vector2<double> d_vel;
-									d_vel.y = pos_err*cos(angle_err_rad);
-									d_vel.x = pos_err*sin(-angle_err_rad);
-									d_vel *= 2.5;
-									d_vel.constrain(150);
-									//求巡线前向速度
-									vector2<double> f_vel;
-									f_vel.y = sin(angle_err_rad);
-									f_vel.x = cos(angle_err_rad);
-									f_vel *= constrain( ( 30 - fabs(angle_err) ), 3.0, 12.0 );
-									Position_Control_set_TargetVelocityBodyHeadingXY_AngleLimit( d_vel.x+f_vel.x, d_vel.y+f_vel.y , 0.05, 0.05);
-								}
-								if(msg.params[0] == 200)
-								{
-									Attitude_Control_set_YawLock();
 									Position_Control_set_XYLock();
+									Attitude_Control_set_YawLock();
+									Position_Control_Takeoff_HeightRelative(msg.params[6]);
+									Position_ControlMode alt_mode;
+									get_Altitude_ControlMode(&alt_mode);
+									if( alt_mode == Position_ControlMode_Position )
+									{
+											++mission_ind;
+									}
 								}
-							}
 						}
 						break;
 					}
-					
-//					case 1:
-//					{	//飞直线
-//						double params[7];
-//						params[0] = 2;
-//						params[1] = 0;
-//						params[2] = 0;
-//						params[3] = nan("");
-//						params[4] = 0.5;	params[5] = 0;
-//						params[6] = 0.5;
-//						int16_t res = Process_NavCmd( MAV_CMD_NAV_WAYPOINT, freq, MAV_FRAME_BODY_FLU, params, &navInf );
-//						if( NavCmdRs_SuccessOrFault(res) )
-//						{	//飞直线完成
-//							init_NavCmdInf(&navInf);
-//							++mission_ind;
-//						}
-//						break;
-//					}
-					
-					case 2:
-					{	//飞直线
-						double params[7];
-						params[0] = 2;
-						params[1] = 0;
-						params[2] = 0;
-						params[3] = nan("");
-						params[4] = 0;	params[5] = 0.5;
-						params[6] = 0;
-						int16_t res = Process_NavCmd( MAV_CMD_NAV_WAYPOINT, freq, MAV_FRAME_BODY_FLU, params, &navInf );
-						if( NavCmdRs_SuccessOrFault(res) )
-						{	//飞直线完成
-							init_NavCmdInf(&navInf);
-							++mission_ind;
+					case 1:
+					{			
+						if(msg_available)
+						{
+								if(msg.cmd == MAV_CMD_USER_1)//飞航点
+								{
+									/*
+									* USER_1 params定义:
+									* msg.params 0->vel.x 
+									* msg.params 1->vel.y 
+									* msg.params 2->vel.z  
+									* msg.params 3->vel.z.angular
+									* msg.params 4->maxRoll  
+									* msg.params 5->maxPitch
+									*/
+									//设置roll pitch角度限制
+									Position_Control_set_TargetVelocityBodyHeadingXY_AngleLimit(msg.params[0], msg.params[1], msg.params[4], msg.params[5]);
+									Attitude_Control_set_Target_YawRelative(msg.params[3]);
+									Position_Control_set_ZLock();
+								}
+								else if(msg.cmd == MAV_CMD_USER_2)//设置高度
+								{
+									/*
+									* USER_2 params定义:
+									* params1 -> height
+									*/
+									Position_Control_set_XYLock();
+									Attitude_Control_set_YawLock();
+									Position_Control_set_TargetPositionZRelative(msg.params[0]);
+								}
+								else if(msg.cmd == MAV_CMD_NAV_LAND)//降落
+								{
+									Position_Control_set_XYLock();
+									Attitude_Control_set_YawLock();
+									Position_Control_set_TargetVelocityZ(-40);
+								}
 						}
-						break;
-					}
-					
-					case 3:
-					{	//飞直线
-						double params[7];
-						params[0] = 2;
-						params[1] = 0;
-						params[2] = 0;
-						params[3] = nan("");
-						params[4] = 0;	params[5] = 0.5;
-						params[6] = 0;
-						int16_t res = Process_NavCmd( MAV_CMD_NAV_WAYPOINT, freq, MAV_FRAME_BODY_FLU, params, &navInf );
-						if( NavCmdRs_SuccessOrFault(res) )
-						{	//飞直线完成
-							init_NavCmdInf(&navInf);
-							++mission_ind;
-						}
-						break;
-					}
-					
-					case 4:
-					{	//飞直线
-						double params[7];
-						params[0] = 2;
-						params[1] = 0;
-						params[2] = 0;
-						params[3] = nan("");
-						params[4] = 0;	params[5] = 0.5;
-						params[6] = -0.5;
-						int16_t res = Process_NavCmd( MAV_CMD_NAV_WAYPOINT, freq, MAV_FRAME_BODY_FLU, params, &navInf );
-						if( NavCmdRs_SuccessOrFault(res) )
-						{	//飞直线完成
-							init_NavCmdInf(&navInf);
-							++mission_ind;
-						}
-						break;
-					}
-					
-					case 5:
-					{	//降落
-						Position_Control_set_XYLock();
-						Position_Control_set_TargetVelocityZ(-50);
 						break;
 					}
 					

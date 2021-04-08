@@ -35,48 +35,47 @@
 #include "drv_OpticalFlow_LC306.hpp"
 #include "drv_OpticalFlow_JL32xx.hpp"
 #include "drv_OpticalFlow_GL9306.hpp"
-
-//Å¼Ã‰ÅƒÄ„ÃÃ¢Ã‰Ä
+#include "drv_AnoOpticalFlow.hpp"
 #include "drv_TFMini.hpp"
 
 #include "drv_SDI.hpp"
 
 void init_drv_Main()
 {	
-	//LEDåˆå§‹åŒ–
+	//LED³õÊ¼»¯
 	init_drv_LED();
-	//ADCåˆå§‹åŒ–
+	//ADC³õÊ¼»¯
 	init_drv_ADC();
-	//ç­‰å¾…ç”µå‹ç¨³å®š
+	//µÈ´ıµçÑ¹ÎÈ¶¨
 	while( Get_VDDA_Voltage() < 3.0 )
-	{	//ç­‰å¾…ç”µå‹ç¨³å®š
+	{	//µÈ´ıµçÑ¹ÎÈ¶¨
 		os_delay(0.1);
 	}
 	
-	//å†…éƒ¨å­˜å‚¨åˆå§‹åŒ–
+	//ÄÚ²¿´æ´¢³õÊ¼»¯
 	init_drv_Flash();
 	init_InternalStorage();	
-	//å‚æ•°åˆå§‹åŒ–
+	//²ÎÊı³õÊ¼»¯
 	init_Parameters();
-	//å­˜å‚¨å¤–è®¾é©±åŠ¨	
+	//´æ´¢ÍâÉèÇı¶¯	
 	init_drv_SDMMC();		
-	//BLæ›´æ–°æ£€æµ‹
+	//BL¸üĞÂ¼ì²â
 	init_drv_BootLoader();
 	
-	//å†…éƒ¨ä¼ æ„Ÿå™¨é©±åŠ¨
+	//ÄÚ²¿´«¸ĞÆ÷Çı¶¯
 	init_Sensors();
 	init_Commulink();
 	init_drv_Oled();
 	init_GUI();
 	os_delay(0.1);
 	
-	//PWWMé©±åŠ¨
+	//PWWMÇı¶¯
 	init_drv_PWMOut();	
 	
-	//SDå¡é©±åŠ¨
+	//SD¿¨Çı¶¯
 	init_SDStorage();
 	
-	//ç«¯å£é©±åŠ¨
+	//¶Ë¿ÚÇı¶¯
 	init_drv_USB();	
 	init_drv_Uart1();
 	init_drv_Uart3();
@@ -84,33 +83,36 @@ void init_drv_Main()
 	init_drv_Uart7();
 	init_drv_Uart8();
 	
-	//å†…éƒ¨ä¼ æ„Ÿå™¨é©±åŠ¨
+	//ÄÚ²¿´«¸ĞÆ÷Çı¶¯
 	init_drv_Sensors();
-	//æ¥æ”¶æœºé©±åŠ¨
+	//½ÓÊÕ»úÇı¶¯
 	init_drv_RCSbus();
 	init_drv_RCPPM();
 	
-	//å¤–ç½®IICé©±åŠ¨
+	//ÍâÖÃIICÇı¶¯
 	init_drv_ExtIIC();
 	init_drv_ExtSPL06();
 	init_drv_InternalMag();
 	init_drv_ExtMag();
 	
-	//GPSé©±åŠ¨
+	//GPSÇı¶¯
 	init_drv_GPS();
 	init_drv_RTK();
 	
-	//å…‰æµé©±åŠ¨
+	//¹âÁ÷Çı¶¯
 	init_drv_OpticalFlow_LC302();
 	init_drv_OpticalFlow_LC306();
 	init_drv_OpticalFlow_JL32xx();
 	init_drv_OpticalFlow_GL9306();
+
+	//ÄäÃû¹âÁ÷Çı¶¯
+	init_drv_AnoOpticalFlow();
 	
-	//æµ‹è·ä¼ æ„Ÿå™¨é©±åŠ¨
+	//²â¾à´«¸ĞÆ÷Çı¶¯
 	init_drv_ultrasonic();
 	init_drv_TFMini();
 	
-	//å¤–éƒ¨LEDé©±åŠ¨
+	//Íâ²¿LEDÇı¶¯
 	init_drv_ExtLed();
 	
 	//init_drv_SDI();

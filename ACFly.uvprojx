@@ -863,6 +863,11 @@
               <FileType>8</FileType>
               <FilePath>.\Drivers\drv_OpticalFlow_GL9306.cpp</FilePath>
             </File>
+            <File>
+              <FileName>drv_AnoOpticalFlow.cpp</FileName>
+              <FileType>8</FileType>
+              <FilePath>.\Drivers\drv_AnoOpticalFlow.cpp</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>

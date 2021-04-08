@@ -81,6 +81,7 @@
 ".\objects\drv_opticalflow_lc306.o"
 ".\objects\drv_opticalflow_jl32xx.o"
 ".\objects\drv_opticalflow_gl9306.o"
+".\objects\drv_anoopticalflow.o"
 ".\objects\lfs.o"
 ".\objects\lfs_util.o"
 ".\objects\bsp_driver_sd.o"

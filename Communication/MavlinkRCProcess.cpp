@@ -12,6 +12,7 @@
 #include "ControlSystem.hpp"
 #include "Sensors.hpp"
 #include "AuxFuncs.hpp"
+#include "SensorsBackend.hpp"
 bool GCS_is_MP = false;
 static void Msg0_HEARTBEAT( uint8_t Port_index , const mavlink_message_t* msg )
 {
@@ -766,16 +767,128 @@ static void Msg76_COMMAND_LONG( uint8_t Port_index , const mavlink_message_t* ms
 			mode_msg.sd_compid = msg->compid;
 			mode_msg.frame = MAV_FRAME_GLOBAL_RELATIVE_ALT;
 			mode_msg.cmd = msg_rd->command;
-			mode_msg.params[0] = msg_rd->param1;
-			mode_msg.params[1] = msg_rd->param2;
-			mode_msg.params[2] = msg_rd->param3;
+			mode_msg.params[0] = msg_rd->param1 * 100;
+			mode_msg.params[1] = msg_rd->param2 * 100;
+			mode_msg.params[2] = msg_rd->param3 * 100;
 			mode_msg.params[3] = msg_rd->param4;
 			mode_msg.params[4] = msg_rd->param5;
 			mode_msg.params[5] = msg_rd->param6;
-			mode_msg.params[6] = msg_rd->param7;
+			mode_msg.params[6] = msg_rd->param7 * 100;
 			SendMsgToMode( mode_msg, 0.01 );
 		}
 	}
+	else
+	{
+		const mavlink_command_long_t* msg_rd = (mavlink_command_long_t*)msg->payload64;
+		ModeMsg mode_msg;
+		mode_msg.cmd_type = CMD_TYPE_MAVLINK | Port_index;
+		mode_msg.sd_sysid = msg->sysid;
+		mode_msg.sd_compid = msg->compid;
+		mode_msg.frame = MAV_FRAME_GLOBAL_RELATIVE_ALT;
+		mode_msg.cmd = msg_rd->command;
+		mode_msg.params[0] = msg_rd->param1 * 100;
+		mode_msg.params[1] = msg_rd->param2 * 100;
+		mode_msg.params[2] = msg_rd->param3 * 100;
+		mode_msg.params[3] = msg_rd->param4;
+		mode_msg.params[4] = msg_rd->param5;
+		mode_msg.params[5] = msg_rd->param6;
+		mode_msg.params[6] = msg_rd->param7 * 100;
+		SendMsgToMode( mode_msg, 0.01 );
+	}
+}
+
+const uint8_t default_vslam_pos_index = 11;
+const uint8_t default_vslam_vel_index = 12;
+const uint8_t default_lidar_slam_pos_index = 13;
+
+bool vslam_pos_register_flag = false;
+bool vslam_vel_register_flag = false;
+bool lidar_slam_pos_register_flag = false;
+
+static void Msg102_VISION_POSITION_ESTIMATE( uint8_t Port_index , const mavlink_message_t* msg )
+{
+	static double initYaw, sinYaw, cosYaw;
+	
+	if(!vslam_pos_register_flag)
+	{
+		if(get_Attitude_MSStatus() != MS_Ready)
+			return;
+		
+		Quaternion quat;
+		get_Attitude_quat(&quat);
+		initYaw = quat.getYaw();
+		fast_sin_cos(initYaw, &sinYaw, &cosYaw);
+		
+		vslam_pos_register_flag = PositionSensorRegister( default_vslam_pos_index,
+																											Position_Sensor_Type_RelativePositioning,
+																											Position_Sensor_DataType_s_xyz,
+																											Position_Sensor_frame_ENU,
+																											0.1,
+																											50
+																											);
+	}
+	
+	const mavlink_vision_position_estimate_t* msg_rd = (mavlink_vision_position_estimate_t*)msg->payload64;
+	
+	//航向对准
+	vector3<double> posVSlam;
+	posVSlam.x = BodyHeading2ENU_x(msg_rd->x * 100 , msg_rd->y * 100 , sinYaw , cosYaw);
+	posVSlam.y = BodyHeading2ENU_y(msg_rd->x * 100 , msg_rd->y * 100 , sinYaw , cosYaw);
+	posVSlam.z = msg_rd->z * 100;
+	PositionSensorUpdatePosition(default_vslam_pos_index, posVSlam, true);
+}
+
+static void Msg103_VISION_SPEED_ESTIMATE( uint8_t Port_index , const mavlink_message_t* msg )
+{
+	if(!vslam_vel_register_flag)
+	{
+		vslam_vel_register_flag = PositionSensorRegister( default_vslam_vel_index,
+																											Position_Sensor_Type_RelativePositioning,
+																											Position_Sensor_DataType_v_xyz,
+																											Position_Sensor_frame_BodyHeading,
+																											0.1,
+																											50
+																											);
+	}
+	const mavlink_vision_speed_estimate_t* msg_rd = (mavlink_vision_speed_estimate_t*)msg->payload64;
+	
+	vector3<double> velVSlam;
+	velVSlam.x = msg_rd->x * 100;
+	velVSlam.y = msg_rd->y * 100;
+	velVSlam.z = msg_rd->z * 100;
+	PositionSensorUpdateVel(default_vslam_vel_index, velVSlam, true);
+}
+
+static void Msg138_ATT_POS_MOCAP( uint8_t Port_index , const mavlink_message_t* msg )
+{
+	static double initYaw, sinYaw, cosYaw;
+	
+	if(!lidar_slam_pos_register_flag)
+	{
+		if(get_Attitude_MSStatus() != MS_Ready)
+			return;
+		
+		Quaternion quat;
+		get_Attitude_quat(&quat);
+		initYaw = quat.getYaw();
+		fast_sin_cos(initYaw, &sinYaw, &cosYaw);
+		
+		lidar_slam_pos_register_flag = PositionSensorRegister( default_lidar_slam_pos_index,
+																													 Position_Sensor_Type_RelativePositioning,
+																													 Position_Sensor_DataType_s_xy,
+																													 Position_Sensor_frame_ENU,
+																													 0.1,
+																													 50
+																													 );
+	}
+	
+	const mavlink_att_pos_mocap_t* msg_rd = (mavlink_att_pos_mocap_t*)msg->payload64;
+	
+	//航向对准
+	vector3<double> posLidarSlam;
+	posLidarSlam.x = BodyHeading2ENU_x(msg_rd->x * 100 , msg_rd->y * 100 , sinYaw , cosYaw);
+	posLidarSlam.y = BodyHeading2ENU_y(msg_rd->x * 100 , msg_rd->y * 100 , sinYaw , cosYaw);
+	PositionSensorUpdatePosition(default_lidar_slam_pos_index, posLidarSlam, true);
 }
 
 static void Msg233_GPS_RTCM_DATA( uint8_t Port_index , const mavlink_message_t* msg )
@@ -947,8 +1060,8 @@ void (*const Mavlink_RC_Process[])( uint8_t Port_index , const mavlink_message_t
 	/*099-*/	0	,
 	/*100-*/	0	,
 	/*101-*/	0	,
-	/*102-*/	0	,
-	/*103-*/	0	,
+	/*102-*/	Msg102_VISION_POSITION_ESTIMATE	,
+	/*103-*/	Msg103_VISION_SPEED_ESTIMATE	,
 	/*104-*/	0	,
 	/*105-*/	0	,
 	/*106-*/	0	,
@@ -983,7 +1096,7 @@ void (*const Mavlink_RC_Process[])( uint8_t Port_index , const mavlink_message_t
 	/*135-*/	0	,
 	/*136-*/	0	,
 	/*137-*/	0	,
-	/*138-*/	0	,
+	/*138-*/	Msg138_ATT_POS_MOCAP	,
 	/*139-*/	0	,
 	/*140-*/	0	,
 	/*141-*/	0	,
