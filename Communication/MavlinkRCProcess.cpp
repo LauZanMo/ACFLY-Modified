@@ -767,13 +767,13 @@ static void Msg76_COMMAND_LONG( uint8_t Port_index , const mavlink_message_t* ms
 			mode_msg.sd_compid = msg->compid;
 			mode_msg.frame = MAV_FRAME_GLOBAL_RELATIVE_ALT;
 			mode_msg.cmd = msg_rd->command;
-			mode_msg.params[0] = msg_rd->param1 * 100;
-			mode_msg.params[1] = msg_rd->param2 * 100;
-			mode_msg.params[2] = msg_rd->param3 * 100;
+			mode_msg.params[0] = msg_rd->param1;
+			mode_msg.params[1] = msg_rd->param2;
+			mode_msg.params[2] = msg_rd->param3;
 			mode_msg.params[3] = msg_rd->param4;
 			mode_msg.params[4] = msg_rd->param5;
 			mode_msg.params[5] = msg_rd->param6;
-			mode_msg.params[6] = msg_rd->param7 * 100;
+			mode_msg.params[6] = msg_rd->param7;
 			SendMsgToMode( mode_msg, 0.01 );
 		}
 	}
@@ -786,13 +786,13 @@ static void Msg76_COMMAND_LONG( uint8_t Port_index , const mavlink_message_t* ms
 		mode_msg.sd_compid = msg->compid;
 		mode_msg.frame = MAV_FRAME_GLOBAL_RELATIVE_ALT;
 		mode_msg.cmd = msg_rd->command;
-		mode_msg.params[0] = msg_rd->param1 * 100;
-		mode_msg.params[1] = msg_rd->param2 * 100;
-		mode_msg.params[2] = msg_rd->param3 * 100;
+		mode_msg.params[0] = msg_rd->param1;
+		mode_msg.params[1] = msg_rd->param2;
+		mode_msg.params[2] = msg_rd->param3;
 		mode_msg.params[3] = msg_rd->param4;
 		mode_msg.params[4] = msg_rd->param5;
 		mode_msg.params[5] = msg_rd->param6;
-		mode_msg.params[6] = msg_rd->param7 * 100;
+		mode_msg.params[6] = msg_rd->param7;
 		SendMsgToMode( mode_msg, 0.01 );
 	}
 }

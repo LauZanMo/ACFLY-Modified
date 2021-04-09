@@ -373,13 +373,13 @@ RTL:
 								{
 									Position_Control_set_XYLock();
 									Attitude_Control_set_YawLock();
-									Position_Control_Takeoff_HeightRelative(msg.params[6]);
-									Position_ControlMode alt_mode;
-									get_Altitude_ControlMode(&alt_mode);
-									if( alt_mode == Position_ControlMode_Position )
-									{
-											++mission_ind;
-									}
+									Position_Control_Takeoff_HeightRelative(msg.params[6]*100);
+								}
+								Position_ControlMode alt_mode;
+								get_Altitude_ControlMode(&alt_mode);
+								if( alt_mode == Position_ControlMode_Position )
+								{
+									++mission_ind;
 								}
 						}
 						break;
@@ -400,7 +400,10 @@ RTL:
 									* msg.params 5->maxPitch
 									*/
 									//设置roll pitch角度限制
-									Position_Control_set_TargetVelocityBodyHeadingXY_AngleLimit(msg.params[0], msg.params[1], msg.params[4], msg.params[5]);
+									Position_Control_set_TargetVelocityBodyHeadingXY_AngleLimit(msg.params[0]*100,
+																																							msg.params[1]*100,
+																																							msg.params[4],
+																																							msg.params[5]);
 									Attitude_Control_set_Target_YawRelative(msg.params[3]);
 									Position_Control_set_ZLock();
 								}
@@ -412,7 +415,7 @@ RTL:
 									*/
 									Position_Control_set_XYLock();
 									Attitude_Control_set_YawLock();
-									Position_Control_set_TargetPositionZRelative(msg.params[0]);
+									Position_Control_set_TargetPositionZRelative(msg.params[0]*100);
 								}
 								else if(msg.cmd == MAV_CMD_NAV_LAND)//降落
 								{
