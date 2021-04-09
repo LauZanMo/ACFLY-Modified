@@ -375,12 +375,12 @@ RTL:
 									Attitude_Control_set_YawLock();
 									Position_Control_Takeoff_HeightRelative(msg.params[6]*100);
 								}
-								Position_ControlMode alt_mode;
-								get_Altitude_ControlMode(&alt_mode);
-								if( alt_mode == Position_ControlMode_Position )
-								{
-									++mission_ind;
-								}
+						}
+						Position_ControlMode alt_mode;
+						get_Altitude_ControlMode(&alt_mode);
+						if( alt_mode == Position_ControlMode_Position )
+						{
+							++mission_ind;
 						}
 						break;
 					}
