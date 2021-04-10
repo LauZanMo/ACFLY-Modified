@@ -366,16 +366,23 @@ RTL:
 				switch( mission_ind )
 				{
 					case 0:
-					{	
+					{
 						if(msg_available)
-						{		
-								if(msg.cmd == MAV_CMD_NAV_TAKEOFF)//起飞
+						{
+								//起飞
+								if(msg.cmd == MAV_CMD_NAV_TAKEOFF)
 								{
-									Position_Control_set_XYLock();
-									Attitude_Control_set_YawLock();
 									Position_Control_Takeoff_HeightRelative(msg.params[6]*100);
+									++mission_ind;
 								}
 						}
+						break;
+					}
+					case 1:
+					{
+						//等待起飞完成
+						Position_Control_set_XYLock();
+						Attitude_Control_set_YawLock();
 						Position_ControlMode alt_mode;
 						get_Altitude_ControlMode(&alt_mode);
 						if( alt_mode == Position_ControlMode_Position )
@@ -384,11 +391,12 @@ RTL:
 						}
 						break;
 					}
-					case 1:
+					case 2:
 					{			
 						if(msg_available)
 						{
-								if(msg.cmd == MAV_CMD_USER_1)//飞航点
+								//飞航点
+								if(msg.cmd == MAV_CMD_USER_1)
 								{
 									/*
 									* USER_1 params定义:
@@ -407,7 +415,8 @@ RTL:
 									Attitude_Control_set_Target_YawRelative(msg.params[3]);
 									Position_Control_set_ZLock();
 								}
-								else if(msg.cmd == MAV_CMD_USER_2)//设置高度
+								//设置高度
+								else if(msg.cmd == MAV_CMD_USER_2)
 								{
 									/*
 									* USER_2 params定义:
@@ -417,7 +426,8 @@ RTL:
 									Attitude_Control_set_YawLock();
 									Position_Control_set_TargetPositionZRelative(msg.params[0]*100);
 								}
-								else if(msg.cmd == MAV_CMD_NAV_LAND)//降落
+								//降落
+								else if(msg.cmd == MAV_CMD_NAV_LAND)
 								{
 									Position_Control_set_XYLock();
 									Attitude_Control_set_YawLock();
