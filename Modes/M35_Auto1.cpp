@@ -370,7 +370,7 @@ RTL:
 						if(msg_available)
 						{
 								//起飞
-								if(msg.cmd == MAV_CMD_NAV_TAKEOFF)
+								if(msg.cmd == MAV_CMD_NAV_TAKEOFF_LOCAL)
 								{
 									Position_Control_Takeoff_HeightRelative(msg.params[6]*100);
 									++mission_ind;
@@ -429,10 +429,23 @@ RTL:
 								//降落
 								else if(msg.cmd == MAV_CMD_NAV_LAND)
 								{
-									Position_Control_set_XYLock();
-									Attitude_Control_set_YawLock();
 									Position_Control_set_TargetVelocityZ(-40);
+									++mission_ind;
 								}
+						}
+						break;
+					}
+					case 3:
+					{
+						//等待降落完成，重置
+						Position_Control_set_XYLock();
+						Attitude_Control_set_YawLock();
+						bool inFlight;
+						get_is_inFlight(&inFlight);
+						if( inFlight==false )
+						{
+							Attitude_Control_Disable();
+							mission_ind = 0;
 						}
 						break;
 					}
