@@ -369,7 +369,7 @@ RTL:
 					{
 						if(msg_available)
 						{
-								//起飞
+								//起飞模式
 								if(msg.cmd == MAV_CMD_NAV_TAKEOFF_LOCAL)
 								{
 									Position_Control_Takeoff_HeightRelative(msg.params[6]*100);
@@ -394,10 +394,11 @@ RTL:
 					}
 					
 					case 2:
-					{			
+					{
+						//mavlink控制状态
 						if(msg_available)
 						{
-								//飞航点
+								//导航
 								if(msg.cmd == MAV_CMD_USER_1)
 								{
 									/*
@@ -424,20 +425,36 @@ RTL:
 									* USER_2 params定义:
 									* params1 -> height
 									*/
-									Position_Control_set_XYLock();
-									Attitude_Control_set_YawLock();
 									Position_Control_set_TargetPositionZRelative(msg.params[0]*100);
+									//转到调整高度模式
+									mission_ind = 3;
 								}
 								//降落
 								else if(msg.cmd == MAV_CMD_NAV_LAND_LOCAL)
 								{
-									++mission_ind;
+									//转到降落模式
+									mission_ind = 4;
 								}
 						}
 						break;
 					}
 					
 					case 3:
+					{
+						//等待调整高度完成，返回mavlink控制模式
+						Position_Control_set_XYLock();
+						Attitude_Control_set_YawLock();
+						Position_ControlMode alt_mode;
+						get_Altitude_ControlMode(&alt_mode);
+						if( alt_mode == Position_ControlMode_Position )
+						{
+							//回到mavlink控制模式
+							mission_ind = 2;
+						}
+						break;
+					}
+					
+					case 4:
 					{
 						//等待降落完成，重置
 						Position_Control_set_XYLock();
@@ -448,6 +465,7 @@ RTL:
 						if( inFlight==false )
 						{
 							Attitude_Control_Disable();
+							//回到起飞模式
 							mission_ind = 0;
 						}
 						break;
