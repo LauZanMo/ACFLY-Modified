@@ -378,6 +378,7 @@ RTL:
 						}
 						break;
 					}
+					
 					case 1:
 					{
 						//等待起飞完成
@@ -391,6 +392,7 @@ RTL:
 						}
 						break;
 					}
+					
 					case 2:
 					{			
 						if(msg_available)
@@ -427,19 +429,20 @@ RTL:
 									Position_Control_set_TargetPositionZRelative(msg.params[0]*100);
 								}
 								//降落
-								else if(msg.cmd == MAV_CMD_NAV_LAND)
+								else if(msg.cmd == MAV_CMD_NAV_LAND_LOCAL)
 								{
-									Position_Control_set_TargetVelocityZ(-40);
 									++mission_ind;
 								}
 						}
 						break;
 					}
+					
 					case 3:
 					{
 						//等待降落完成，重置
 						Position_Control_set_XYLock();
 						Attitude_Control_set_YawLock();
+						Position_Control_set_TargetVelocityZ(-40);
 						bool inFlight;
 						get_is_inFlight(&inFlight);
 						if( inFlight==false )
