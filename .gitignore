@@ -31,5 +31,11 @@
 *.out
 *.app
 
+# keil
+Objects/
+Listings/
+*.uvoptx
+*.uvguix.*
+
 # vscode folder
 .vscode/

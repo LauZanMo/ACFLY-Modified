@@ -17,6 +17,25 @@ M35_Auto1::M35_Auto1():Mode_Base( "Auto1", 35 )
 
 ModeResult M35_Auto1::main_func( void* param1, uint32_t param2 )
 {
+	//任务索引
+	const uint8_t mavlink_control = 0;
+	const uint8_t custom_nav = 1;
+	const uint8_t altitude_adjust = 2;
+	const uint8_t yaw_adjust = 3;
+	const uint8_t land = 4;
+
+	//MAV_CMD_USER_1数据记录
+	vector3<double> last_linear_vel(0, 0, 0);
+	double last_z_angular_rate = 0;
+	vector2<double> last_max_angle(0.5, 0.5);
+
+	//MAV_CMD_USER_1延时计数
+	const uint8_t max_delay_counter = 25;
+	uint8_t delay_counter = 0;
+
+	//MAV_CMD_NAV_LAND_LOCAL速度记录
+	double land_speed = -40;
+	
 	double freq = 50;
 	setLedMode(LEDMode_Flying1);
 	Altitude_Control_Enable();
@@ -365,108 +384,302 @@ RTL:
 				//根据mission_ind状态判断当前需要执行什么飞行动作
 				switch( mission_ind )
 				{
-					case 0:
+					case mavlink_control:
 					{
 						if(msg_available)
 						{
-								//起飞模式
-								if(msg.cmd == MAV_CMD_NAV_TAKEOFF_LOCAL)
+								bool inFlight;
+								get_is_inFlight(&inFlight);
+							
+								//判断滞空
+								if( inFlight==false )
 								{
-									Position_Control_Takeoff_HeightRelative(msg.params[6]*100);
-									++mission_ind;
+									//未滞空
+									if(msg.cmd == MAV_CMD_NAV_TAKEOFF_LOCAL)
+									{
+										/*
+										* MAV_CMD_NAV_TAKEOFF_LOCAL:
+										* params[0]:Minimum pitch (if airspeed sensor present), desired pitch without sensor
+										* params[1]:Empty
+										* params[2]:Takeoff ascend rate
+										* params[3]:Yaw angle (if magnetometer or another yaw estimation source present), 
+													ignored without one of these
+										* params[4]:Y-axis position
+										* params[5]:X-axis position
+										* params[6]:Z-axis position
+										*/
+										
+										//设置Z轴默认速度
+										if (msg.params[2] != 0)
+											Position_Control_set_ZAutoSpeed(msg.params[2] * 100, msg.params[2] * 100);
+										
+										//控制相对高度
+										Position_Control_Takeoff_HeightRelative(msg.params[6]*100);
+										
+										//转到高度调整任务
+										mission_ind = altitude_adjust;
+									}
+								}
+								else
+								{
+									//滞空
+									if(msg.cmd == MAV_CMD_USER_1)
+									{
+										/*
+										* MAV_CMD_USER_1:
+										* params[0]:X-axis linear velocity
+										* params[1]:Y-axis linear velocity
+										* params[2]:Z-axis linear velocity
+										* params[3]:Z-axis angular velocity
+										* params[4]:Maximum roll
+										* params[5]:Maximum pitch
+										* params[6]:Mission conversion
+										*/
+										
+										//设置XY轴线速度与roll、pitch角度限制
+										Position_Control_set_TargetVelocityBodyHeadingXY_AngleLimit(msg.params[0]*100,
+																																								msg.params[1]*100,
+																																								msg.params[4],
+																																								msg.params[5]);
+										
+										//设置Z轴角速度
+										Attitude_Control_set_Target_YawRate(msg.params[3]);
+										
+										//导航暂时为2D
+										Position_Control_set_ZLock();
+										
+										//记录数据，保证控制连续
+										last_linear_vel = vector3<double>(msg.params[0]*100, msg.params[1]*100, msg.params[2]*100);
+										last_z_angular_rate = msg.params[3];
+										last_max_angle = vector2<double>(msg.params[4], msg.params[5]);
+
+										//转到导航任务
+										mission_ind = custom_nav;
+									}
+									
+									else if(msg.cmd == MAV_CMD_CONDITION_CHANGE_ALT)
+									{
+										/*
+										* MAV_CMD_CONDITION_CHANGE_ALT:
+										* params[0]:Descent/Ascend rate
+										* params[1]:Empty
+										* params[2]:Empty
+										* params[3]:Empty
+										* params[4]:Empty
+										* params[5]:Empty
+										* params[6]:Target altitude
+										*/
+										
+										//设置目标高度(相对)
+										if (msg.params[0] != 0)
+											//速度无方向
+											Position_Control_set_TargetPositionZRelative(msg.params[6]*100, msg.params[0]*100);
+										else
+											Position_Control_set_TargetPositionZRelative(msg.params[6]*100);
+										
+										//转到调整高度任务
+										mission_ind = altitude_adjust;
+									}
+									
+									else if(msg.cmd == MAV_CMD_CONDITION_YAW)
+									{
+										/*
+										* MAV_CMD_CONDITION_YAW:
+										* params[0]:Target angle, 0 is east
+										* params[1]:Angular speed
+										* params[2]:Direction: -1: counter clockwise, 1: clockwise
+										* params[3]:0: absolute angle, 1: relative offset
+										* params[4]:Empty
+										* params[5]:Empty
+										* params[6]:Empty
+										*/
+										
+										//A9不提供偏航角速度自动控制接口
+										//根据mavlink信息决定控制角度类型
+										if (msg.params[3])
+											Attitude_Control_set_Target_YawRelative(msg.params[0]);
+										else
+											Attitude_Control_set_Target_Yaw(msg.params[0]);
+										
+										//转到调整偏航任务
+										mission_ind = yaw_adjust;
+									}
+									
+									else if(msg.cmd == MAV_CMD_NAV_LAND_LOCAL)
+									{
+										/*
+										* MAV_CMD_NAV_LAND_LOCAL:
+										* params[0]:Landing target number (if available)
+										* params[1]:Maximum accepted offset from desired landing position - computed magnitude
+													from spherical coordinates: d = sqrt(x^2 + y^2 + z^2), which gives the
+													maximum accepted distance between the desired landing position and the 
+													position where the vehicle is about to land
+										* params[2]:Landing descend rate
+										* params[3]:Desired yaw angle
+										* params[4]:Y-axis position
+										* params[5]:X-axis position
+										* params[6]:Z-axis / ground level position
+										*/
+										
+										//设置降落速度
+										if(msg.params[2] != 0)
+											land_speed = msg.params[2] * 100;
+										
+										//转到降落任务
+										mission_ind = land;
+									}
 								}
 						}
-						break;
-					}
-					
-					case 1:
-					{
-						//等待起飞完成
-						Position_Control_set_XYLock();
-						Attitude_Control_set_YawLock();
-						Position_ControlMode alt_mode;
-						get_Altitude_ControlMode(&alt_mode);
-						if( alt_mode == Position_ControlMode_Position )
+						else
 						{
-							++mission_ind;
+							//无指令控制则刹车
+							Position_Control_set_XYLock();
+							Attitude_Control_set_YawLock();
+							Position_Control_set_ZLock();
 						}
+						
 						break;
 					}
 					
-					case 2:
+					case custom_nav:
 					{
-						//mavlink控制状态
 						if(msg_available)
 						{
-								//导航
 								if(msg.cmd == MAV_CMD_USER_1)
 								{
 									/*
-									* USER_1 params定义:
-									* msg.params 0->vel.x 
-									* msg.params 1->vel.y 
-									* msg.params 2->vel.z  
-									* msg.params 3->vel.z.angular
-									* msg.params 4->maxRoll  
-									* msg.params 5->maxPitch
+									* MAV_CMD_USER_1:
+									* params[0]:X-axis linear velocity
+									* params[1]:Y-axis linear velocity
+									* params[2]:Z-axis linear velocity
+									* params[3]:Z-axis angular velocity
+									* params[4]:Maximum roll
+									* params[5]:Maximum pitch
+									* params[6]:Mission conversion
 									*/
-									//设置roll pitch角度限制
-									Position_Control_set_TargetVelocityBodyHeadingXY_AngleLimit(msg.params[0]*100,
-																																							msg.params[1]*100,
-																																							msg.params[4],
-																																							msg.params[5]);
-									Attitude_Control_set_Target_YawRelative(msg.params[3]);
-									Position_Control_set_ZLock();
-								}
-								//设置高度
-								else if(msg.cmd == MAV_CMD_USER_2)
-								{
-									/*
-									* USER_2 params定义:
-									* params1 -> height
-									*/
-									Position_Control_set_TargetPositionZRelative(msg.params[0]*100);
-									//转到调整高度模式
-									mission_ind = 3;
-								}
-								//降落
-								else if(msg.cmd == MAV_CMD_NAV_LAND_LOCAL)
-								{
-									//转到降落模式
-									mission_ind = 4;
+									
+									//任务转换
+									if (msg.params[6] != 0)
+									{
+										//刹车
+										Position_Control_set_XYLock();
+										Attitude_Control_set_YawLock();
+										Position_Control_set_ZLock();
+
+										//转到mavlink控制任务
+										mission_ind = mavlink_control;
+									}
+									else
+									{
+										//更新数据
+										//设置XY轴线速度与roll、pitch角度限制
+										Position_Control_set_TargetVelocityBodyHeadingXY_AngleLimit(msg.params[0]*100,
+																																								msg.params[1]*100,
+																																								msg.params[4],
+																																								msg.params[5]);
+										
+										//设置Z轴角速度
+										Attitude_Control_set_Target_YawRate(msg.params[3]);
+										
+										//导航暂时为2D
+										Position_Control_set_ZLock();
+										
+										//记录数据，保证控制连续
+										last_linear_vel = vector3<double>(msg.params[0]*100, msg.params[1]*100, msg.params[2]*100);
+										last_z_angular_rate = msg.params[3];
+										last_max_angle = vector2<double>(msg.params[4], msg.params[5]);
+									}
+									
+									//清空计数
+									delay_counter = 0;
 								}
 						}
+						else if(delay_counter < max_delay_counter)
+						{
+							//保持连续
+							//设置XY轴线速度与roll、pitch角度限制
+							Position_Control_set_TargetVelocityBodyHeadingXY_AngleLimit(last_linear_vel[0]*100,
+																																					last_linear_vel[1]*100,
+																																					last_max_angle[0],
+																																					last_max_angle[1]);
+							
+							//设置Z轴角速度
+							Attitude_Control_set_Target_YawRate(last_z_angular_rate);
+							
+							//导航暂时为2D
+							Position_Control_set_ZLock();
+							
+							//延时计数
+							delay_counter++;
+						}
+						else
+						{
+							//超时，任务转换，刹车
+							Position_Control_set_XYLock();
+							Attitude_Control_set_YawLock();
+							Position_Control_set_ZLock();
+
+							//转到mavlink控制任务
+							mission_ind = mavlink_control;
+
+							//清空计数
+							delay_counter = 0;
+						}
+						
 						break;
 					}
 					
-					case 3:
+					case altitude_adjust:
 					{
-						//等待调整高度完成，返回mavlink控制模式
+						//除控制方向其余锁定
 						Position_Control_set_XYLock();
 						Attitude_Control_set_YawLock();
+						
+						//访问控制方向控制器
 						Position_ControlMode alt_mode;
 						get_Altitude_ControlMode(&alt_mode);
 						if( alt_mode == Position_ControlMode_Position )
 						{
-							//回到mavlink控制模式
-							mission_ind = 2;
+							//转到mavlink控制任务
+							mission_ind = mavlink_control;
 						}
+						
 						break;
 					}
 					
-					case 4:
+					case yaw_adjust:
 					{
-						//等待降落完成，重置
+						//除控制方向其余锁定
+						Position_Control_set_XYLock();
+						Position_Control_set_ZLock();
+						
+						//访问控制方向控制器
+						double yaw_err;
+						Attitude_Control_get_YawTrackErr(&yaw_err);
+						if( yaw_err == 0 )
+						{
+							//回到mavlink控制模式
+							mission_ind = mavlink_control;
+						}
+						
+						break;
+					}
+					
+					case land:
+					{
+						//除控制方向其余锁定
 						Position_Control_set_XYLock();
 						Attitude_Control_set_YawLock();
-						Position_Control_set_TargetVelocityZ(-40);
+						Position_Control_set_TargetVelocityZ(land_speed);
+						
+						//判断滞空
 						bool inFlight;
 						get_is_inFlight(&inFlight);
 						if( inFlight==false )
 						{
 							Attitude_Control_Disable();
-							//回到起飞模式
-							mission_ind = 0;
+							//回到mavlink控制模式
+							mission_ind = mavlink_control;
 						}
 						break;
 					}
