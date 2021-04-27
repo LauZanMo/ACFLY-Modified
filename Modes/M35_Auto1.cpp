@@ -450,26 +450,40 @@ RTL:
 										* params[6]:Mission conversion
 										*/
 										
-										//mavlink反馈
-										mavlink_send_command_ack(msg, MAV_RESULT_IN_PROGRESS, 0, 0);
-										
-										//设置XY轴线速度与roll、pitch角度限制
-										Position_Control_set_TargetVelocityBodyHeadingXY_AngleLimit(msg.params[0]*100,
-																																								msg.params[1]*100,
-																																								msg.params[4],
-																																								msg.params[5]);
-										
-										//设置Z轴角速度
-										Attitude_Control_set_Target_YawRate(msg.params[3]);
-										
-										//导航暂时为2D
-										Position_Control_set_ZLock();
-										
-										//记录数据，保证控制连续，并用于结束反馈
-										last_user1_msg = msg;
+										//任务转换
+										if (msg.params[6] != 0)
+										{
+											//刹车
+											Position_Control_set_XYLock();
+											Attitude_Control_set_YawLock();
+											Position_Control_set_ZLock();
+											
+											//mavlink反馈
+											mavlink_send_command_ack(msg, MAV_RESULT_ACCEPTED, 0, 0);
+										}
+										else
+										{
+											//mavlink反馈
+											mavlink_send_command_ack(msg, MAV_RESULT_IN_PROGRESS, 0, 0);
+											
+											//设置XY轴线速度与roll、pitch角度限制
+											Position_Control_set_TargetVelocityBodyHeadingXY_AngleLimit(msg.params[0]*100,
+																																									msg.params[1]*100,
+																																									msg.params[4],
+																																									msg.params[5]);
+											
+											//设置Z轴角速度
+											Attitude_Control_set_Target_YawRate(msg.params[3]);
+											
+											//导航暂时为2D
+											Position_Control_set_ZLock();
+											
+											//记录数据，保证控制连续，并用于结束反馈
+											last_user1_msg = msg;
 
-										//转到导航任务
-										mission_ind = custom_nav;
+											//转到导航任务
+											mission_ind = custom_nav;
+										}
 									}
 									
 									else if(msg.cmd == MAV_CMD_CONDITION_CHANGE_ALT)
@@ -600,7 +614,7 @@ RTL:
 										mission_ind = mavlink_control;
 										
 										//mavlink反馈
-										mavlink_send_command_ack(msg, MAV_RESULT_ACCEPTED, 100, 0);
+										mavlink_send_command_ack(msg, MAV_RESULT_ACCEPTED, 0, 0);
 									}
 									else
 									{
@@ -657,7 +671,7 @@ RTL:
 							delay_counter = 0;
 							
 							//mavlink反馈
-							mavlink_send_command_ack(last_user1_msg, MAV_RESULT_ACCEPTED, 100, 0);
+							mavlink_send_command_ack(last_user1_msg, MAV_RESULT_ACCEPTED, 0, 0);
 						}
 						
 						break;
@@ -679,9 +693,9 @@ RTL:
 							
 							//mavlink反馈
 							if(altitude_adjust_flag == 0)
-								mavlink_send_command_ack(last_nav_takeoff_local_msg, MAV_RESULT_ACCEPTED, 100, 0);
+								mavlink_send_command_ack(last_nav_takeoff_local_msg, MAV_RESULT_ACCEPTED, 0, 0);
 							else
-								mavlink_send_command_ack(last_condition_change_alt_msg, MAV_RESULT_ACCEPTED, 100, 0);
+								mavlink_send_command_ack(last_condition_change_alt_msg, MAV_RESULT_ACCEPTED, 0, 0);
 						}
 						
 						break;
@@ -702,7 +716,7 @@ RTL:
 							mission_ind = mavlink_control;
 							
 							//mavlink反馈
-							mavlink_send_command_ack(last_condition_yaw_msg, MAV_RESULT_ACCEPTED, 100, 0);
+							mavlink_send_command_ack(last_condition_yaw_msg, MAV_RESULT_ACCEPTED, 0, 0);
 						}
 						
 						break;
@@ -732,7 +746,7 @@ RTL:
 							mission_ind = mavlink_control;
 							
 							//mavlink反馈
-							mavlink_send_command_ack(last_nav_land_local_msg, MAV_RESULT_ACCEPTED, 100, 0);
+							mavlink_send_command_ack(last_nav_land_local_msg, MAV_RESULT_ACCEPTED, 0, 0);
 						}
 						break;
 					}
