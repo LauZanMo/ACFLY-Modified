@@ -10,6 +10,11 @@
 #include "ControlSystem.hpp"
 #include "NavCmdProcess.hpp"
 
+void mavlink_send_command_ack(ModeMsg msg,
+															uint8_t result,
+															uint8_t progress,
+															int32_t result_param2);
+
 M35_Auto1::M35_Auto1():Mode_Base( "Auto1", 35 )
 {
 	
@@ -24,17 +29,19 @@ ModeResult M35_Auto1::main_func( void* param1, uint32_t param2 )
 	const uint8_t yaw_adjust = 3;
 	const uint8_t land = 4;
 
-	//MAV_CMD_USER_1数据记录
-	vector3<double> last_linear_vel(0, 0, 0);
-	double last_z_angular_rate = 0;
-	vector2<double> last_max_angle(0.5, 0.5);
+	//数据记录
+	ModeMsg last_nav_takeoff_local_msg;
+	ModeMsg last_user1_msg;
+	ModeMsg last_condition_change_alt_msg;
+	ModeMsg last_condition_yaw_msg;
+	ModeMsg last_nav_land_local_msg;
+	
+	//altitude_adjust控制指令标志：0为起飞，1为调整高度
+	uint8_t altitude_adjust_flag;
 
 	//MAV_CMD_USER_1延时计数
 	const uint8_t max_delay_counter = 25;
 	uint8_t delay_counter = 0;
-
-	//MAV_CMD_NAV_LAND_LOCAL速度记录
-	double land_speed = -40;
 	
 	double freq = 50;
 	setLedMode(LEDMode_Flying1);
@@ -409,12 +416,19 @@ RTL:
 										* params[6]:Z-axis position
 										*/
 										
+										//mavlink反馈
+										mavlink_send_command_ack(msg, MAV_RESULT_IN_PROGRESS, 0, 0);
+										
 										//设置Z轴默认速度
 										if (msg.params[2] != 0)
 											Position_Control_set_ZAutoSpeed(msg.params[2] * 100, msg.params[2] * 100);
 										
 										//控制相对高度
 										Position_Control_Takeoff_HeightRelative(msg.params[6]*100);
+										
+										//记录数据，用于结束反馈
+										last_nav_takeoff_local_msg = msg;
+										altitude_adjust_flag = 0;
 										
 										//转到高度调整任务
 										mission_ind = altitude_adjust;
@@ -436,6 +450,9 @@ RTL:
 										* params[6]:Mission conversion
 										*/
 										
+										//mavlink反馈
+										mavlink_send_command_ack(msg, MAV_RESULT_IN_PROGRESS, 0, 0);
+										
 										//设置XY轴线速度与roll、pitch角度限制
 										Position_Control_set_TargetVelocityBodyHeadingXY_AngleLimit(msg.params[0]*100,
 																																								msg.params[1]*100,
@@ -448,10 +465,8 @@ RTL:
 										//导航暂时为2D
 										Position_Control_set_ZLock();
 										
-										//记录数据，保证控制连续
-										last_linear_vel = vector3<double>(msg.params[0]*100, msg.params[1]*100, msg.params[2]*100);
-										last_z_angular_rate = msg.params[3];
-										last_max_angle = vector2<double>(msg.params[4], msg.params[5]);
+										//记录数据，保证控制连续，并用于结束反馈
+										last_user1_msg = msg;
 
 										//转到导航任务
 										mission_ind = custom_nav;
@@ -470,12 +485,19 @@ RTL:
 										* params[6]:Target altitude
 										*/
 										
+										//mavlink反馈
+										mavlink_send_command_ack(msg, MAV_RESULT_IN_PROGRESS, 0, 0);
+										
 										//设置目标高度(相对)
 										if (msg.params[0] != 0)
 											//速度无方向
 											Position_Control_set_TargetPositionZRelative(msg.params[6]*100, msg.params[0]*100);
 										else
 											Position_Control_set_TargetPositionZRelative(msg.params[6]*100);
+										
+										//记录数据，用于结束反馈
+										last_condition_change_alt_msg = msg;
+										altitude_adjust_flag = 1;
 										
 										//转到调整高度任务
 										mission_ind = altitude_adjust;
@@ -494,12 +516,18 @@ RTL:
 										* params[6]:Empty
 										*/
 										
+										//mavlink反馈
+										mavlink_send_command_ack(msg, MAV_RESULT_IN_PROGRESS, 0, 0);
+										
 										//A9不提供偏航角速度自动控制接口
 										//根据mavlink信息决定控制角度类型
 										if (msg.params[3])
 											Attitude_Control_set_Target_YawRelative(msg.params[0]);
 										else
 											Attitude_Control_set_Target_Yaw(msg.params[0]);
+										
+										//记录数据，用于结束反馈
+										last_condition_yaw_msg = msg;
 										
 										//转到调整偏航任务
 										mission_ind = yaw_adjust;
@@ -521,9 +549,11 @@ RTL:
 										* params[6]:Z-axis / ground level position
 										*/
 										
-										//设置降落速度
-										if(msg.params[2] != 0)
-											land_speed = msg.params[2] * 100;
+										//mavlink反馈
+										mavlink_send_command_ack(msg, MAV_RESULT_IN_PROGRESS, 0, 0);
+										
+										//记录数据，用于结束反馈
+										last_nav_land_local_msg = msg;
 										
 										//转到降落任务
 										mission_ind = land;
@@ -568,6 +598,9 @@ RTL:
 
 										//转到mavlink控制任务
 										mission_ind = mavlink_control;
+										
+										//mavlink反馈
+										mavlink_send_command_ack(msg, MAV_RESULT_ACCEPTED, 100, 0);
 									}
 									else
 									{
@@ -585,9 +618,7 @@ RTL:
 										Position_Control_set_ZLock();
 										
 										//记录数据，保证控制连续
-										last_linear_vel = vector3<double>(msg.params[0]*100, msg.params[1]*100, msg.params[2]*100);
-										last_z_angular_rate = msg.params[3];
-										last_max_angle = vector2<double>(msg.params[4], msg.params[5]);
+										last_user1_msg = msg;
 									}
 									
 									//清空计数
@@ -598,13 +629,13 @@ RTL:
 						{
 							//保持连续
 							//设置XY轴线速度与roll、pitch角度限制
-							Position_Control_set_TargetVelocityBodyHeadingXY_AngleLimit(last_linear_vel[0]*100,
-																																					last_linear_vel[1]*100,
-																																					last_max_angle[0],
-																																					last_max_angle[1]);
+							Position_Control_set_TargetVelocityBodyHeadingXY_AngleLimit(last_user1_msg.params[0]*100,
+																																					last_user1_msg.params[1]*100,
+																																					last_user1_msg.params[4],
+																																					last_user1_msg.params[5]);
 							
 							//设置Z轴角速度
-							Attitude_Control_set_Target_YawRate(last_z_angular_rate);
+							Attitude_Control_set_Target_YawRate(last_user1_msg.params[3]);
 							
 							//导航暂时为2D
 							Position_Control_set_ZLock();
@@ -624,6 +655,9 @@ RTL:
 
 							//清空计数
 							delay_counter = 0;
+							
+							//mavlink反馈
+							mavlink_send_command_ack(last_user1_msg, MAV_RESULT_ACCEPTED, 100, 0);
 						}
 						
 						break;
@@ -642,6 +676,12 @@ RTL:
 						{
 							//转到mavlink控制任务
 							mission_ind = mavlink_control;
+							
+							//mavlink反馈
+							if(altitude_adjust_flag == 0)
+								mavlink_send_command_ack(last_nav_takeoff_local_msg, MAV_RESULT_ACCEPTED, 100, 0);
+							else
+								mavlink_send_command_ack(last_condition_change_alt_msg, MAV_RESULT_ACCEPTED, 100, 0);
 						}
 						
 						break;
@@ -660,6 +700,9 @@ RTL:
 						{
 							//回到mavlink控制模式
 							mission_ind = mavlink_control;
+							
+							//mavlink反馈
+							mavlink_send_command_ack(last_condition_yaw_msg, MAV_RESULT_ACCEPTED, 100, 0);
 						}
 						
 						break;
@@ -670,16 +713,26 @@ RTL:
 						//除控制方向其余锁定
 						Position_Control_set_XYLock();
 						Attitude_Control_set_YawLock();
-						Position_Control_set_TargetVelocityZ(land_speed);
+						
+						//设置降落速度
+						if(last_nav_land_local_msg.params[2] != 0)
+							Position_Control_set_TargetVelocityZ(last_nav_land_local_msg.params[2]);
+						else
+							Position_Control_set_TargetVelocityZ(-40);
 						
 						//判断滞空
 						bool inFlight;
 						get_is_inFlight(&inFlight);
 						if( inFlight==false )
 						{
+							//关闭角度控制器
 							Attitude_Control_Disable();
+							
 							//回到mavlink控制模式
 							mission_ind = mavlink_control;
+							
+							//mavlink反馈
+							mavlink_send_command_ack(last_nav_land_local_msg, MAV_RESULT_ACCEPTED, 100, 0);
 						}
 						break;
 					}
@@ -845,4 +898,37 @@ RTL:
 		}
 	}
 	return MR_OK;
+}
+
+void mavlink_send_command_ack(ModeMsg msg,
+															uint8_t result,
+															uint8_t progress,
+															int32_t result_param2)
+{
+	uint8_t port_index = msg.cmd_type & CMD_TYPE_PORT_MASK;
+	const Port* port = get_CommuPort( port_index );
+	if( (msg.cmd_type & CMD_TYPE_MASK) == CMD_TYPE_MAVLINK && port->write )
+	{
+		mavlink_message_t msg_sd;
+		if( mavlink_lock_chan( port_index, 0.01 ) )
+		{
+			mavlink_msg_command_ack_pack_chan( 
+				get_CommulinkSysId() ,	//system id
+				get_CommulinkCompId() ,	//component id
+				port_index ,
+				&msg_sd,
+				msg.cmd,	//command
+				result ,	//result
+				progress ,	//progress
+				result_param2 ,	//param2
+				msg.sd_sysid ,	//target system
+				msg.sd_compid //target component
+			);
+			mavlink_msg_to_send_buffer(port->write, 
+																 port->lock,
+																 port->unlock,
+																 &msg_sd, 0, 0.01);
+			mavlink_unlock_chan(port_index);
+		}
+	}
 }
