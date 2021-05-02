@@ -730,7 +730,7 @@ RTL:
 						
 						//…Ë÷√Ωµ¬‰ÀŸ∂»
 						if(last_nav_land_local_msg.params[2] != 0)
-							Position_Control_set_TargetVelocityZ(last_nav_land_local_msg.params[2]);
+							Position_Control_set_TargetVelocityZ(last_nav_land_local_msg.params[2]*100);
 						else
 							Position_Control_set_TargetVelocityZ(-40);
 						
