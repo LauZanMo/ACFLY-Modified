@@ -710,7 +710,7 @@ RTL:
 						//访问控制方向控制器
 						double yaw_err;
 						Attitude_Control_get_YawTrackErr(&yaw_err);
-						if( yaw_err == 0 )
+						if( yaw_err <= 0.01 )
 						{
 							//回到mavlink控制模式
 							mission_ind = mavlink_control;

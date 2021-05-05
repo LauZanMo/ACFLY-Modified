@@ -936,7 +936,7 @@ void ctrl_Attitude()
 			if(inFlight)
 			{
 				//TD4滤目标角度
-				Target_trackerY.r2n = Target_trackerY.r2p = degree2rad(60.0);
+				Target_trackerY.r2n = Target_trackerY.r2p = cfg.maxYSp[0];
 				Target_trackerY.track4( target_Yaw , 1.0f / CtrlRateHz );
 				
 				//角度误差化为-180 - +180
