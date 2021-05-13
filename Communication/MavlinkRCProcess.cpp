@@ -821,7 +821,7 @@ static void Msg102_VISION_POSITION_ESTIMATE( uint8_t Port_index , const mavlink_
 		
 		vslam_pos_register_flag = PositionSensorRegister( default_vslam_pos_index,
 																											Position_Sensor_Type_RelativePositioning,
-																											Position_Sensor_DataType_s_xyz,
+																											Position_Sensor_DataType_s_xy,
 																											Position_Sensor_frame_ENU,
 																											0.1,
 																											50
@@ -834,18 +834,28 @@ static void Msg102_VISION_POSITION_ESTIMATE( uint8_t Port_index , const mavlink_
 	vector3<double> posVSlam;
 	posVSlam.x = BodyHeading2ENU_x(msg_rd->x * 100 , msg_rd->y * 100 , sinYaw , cosYaw);
 	posVSlam.y = BodyHeading2ENU_y(msg_rd->x * 100 , msg_rd->y * 100 , sinYaw , cosYaw);
-	posVSlam.z = msg_rd->z * 100;
+//	posVSlam.z = msg_rd->z * 100;
 	PositionSensorUpdatePosition(default_vslam_pos_index, posVSlam, true);
 }
 
 static void Msg103_VISION_SPEED_ESTIMATE( uint8_t Port_index , const mavlink_message_t* msg )
 {
+	static double initYaw, sinYaw, cosYaw;
+	
 	if(!vslam_vel_register_flag)
 	{
+		if(get_Attitude_MSStatus() != MS_Ready)
+			return;
+		
+		Quaternion quat;
+		get_Attitude_quat(&quat);
+		initYaw = quat.getYaw();
+		fast_sin_cos(initYaw, &sinYaw, &cosYaw);
+		
 		vslam_vel_register_flag = PositionSensorRegister( default_vslam_vel_index,
 																											Position_Sensor_Type_RelativePositioning,
-																											Position_Sensor_DataType_v_xyz,
-																											Position_Sensor_frame_BodyHeading,
+																											Position_Sensor_DataType_v_xy,
+																											Position_Sensor_frame_ENU,
 																											0.1,
 																											50
 																											);
@@ -853,9 +863,9 @@ static void Msg103_VISION_SPEED_ESTIMATE( uint8_t Port_index , const mavlink_mes
 	const mavlink_vision_speed_estimate_t* msg_rd = (mavlink_vision_speed_estimate_t*)msg->payload64;
 	
 	vector3<double> velVSlam;
-	velVSlam.x = msg_rd->x * 100;
-	velVSlam.y = msg_rd->y * 100;
-	velVSlam.z = msg_rd->z * 100;
+	velVSlam.x = BodyHeading2ENU_x(msg_rd->x * 100 , msg_rd->y * 100 , sinYaw , cosYaw);
+	velVSlam.y = BodyHeading2ENU_y(msg_rd->x * 100 , msg_rd->y * 100 , sinYaw , cosYaw);
+//	velVSlam.z = msg_rd->z * 100;
 	PositionSensorUpdateVel(default_vslam_vel_index, velVSlam, true);
 }
 
@@ -878,7 +888,7 @@ static void Msg138_ATT_POS_MOCAP( uint8_t Port_index , const mavlink_message_t* 
 																													 Position_Sensor_DataType_s_xy,
 																													 Position_Sensor_frame_ENU,
 																													 0.1,
-																													 50
+																													 25
 																													 );
 	}
 	
