@@ -88,7 +88,7 @@ static void AnoOpticalFlow_Server(void* pvParameters)
 													vector3<double> vel;
 													vel.x = (double)Flow.DX;
 													vel.y = (double)Flow.DY;
-													PositionSensorUpdateVel(default_ano_optical_flow_index, vel, true);
+//													PositionSensorUpdateVel(default_ano_optical_flow_index, vel, true);
 												}
 												else
 													PositionSensorSetInavailable(default_ano_optical_flow_index);
