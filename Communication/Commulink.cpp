@@ -400,7 +400,7 @@ using namespace std;
 		CommuPorts[ p_index ] = ind;
 		mavlink_set_proto_version( p_index , 1 );
 		SetMsgRate( p_index, MAVLINK_MSG_ID_ATTITUDE, 20 );
-		SetMsgRate( p_index, MAVLINK_MSG_ID_LOCAL_POSITION_NED, 2 );
+		SetMsgRate( p_index, MAVLINK_MSG_ID_LOCAL_POSITION_NED, 20 );
 		SetMsgRate( p_index, MAVLINK_MSG_ID_GPS_RAW_INT, 2 );
 		SetMsgRate( p_index, MAVLINK_MSG_ID_GPS2_RAW, 2 );
 		SetMsgRate( p_index, MAVLINK_MSG_ID_GLOBAL_POSITION_INT, 5 );
