@@ -340,7 +340,24 @@ GPS_CheckBaud:
 	}
 	
 GPS_Present:
-	//识别到gps
+	//重发配置
+	uint16_t sd_length = 0;
+	for(uint32_t i=0; i < sizeof(ubloxInit); i++)
+	{
+		if( i<sizeof(ubloxInit)-1 && ubloxInit[i] == 0xB5 && ubloxInit[i+1] == 0x62 && i>2 )
+		{
+			driver_info.port.wait_sent(1);
+			os_delay(0.11);
+			driver_info.port.write( &ubloxInit[i-sd_length], sd_length, portMAX_DELAY, portMAX_DELAY );
+			sd_length = 0;
+		}
+		++sd_length;
+	}
+	driver_info.port.wait_sent(1);
+	os_delay(0.11);
+	driver_info.port.write( &ubloxInit[sizeof(ubloxInit)-sd_length], sd_length, portMAX_DELAY, portMAX_DELAY );
+	
+	//发送GNSS配置
 	GpsConfig gps_cfg;
 	if( ReadParamGroup( "GPS2Cfg", (uint64_t*)&gps_cfg, 0 ) == PR_OK )
 	{

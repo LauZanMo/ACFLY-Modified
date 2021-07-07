@@ -243,12 +243,28 @@ namespace __global_time
 	static RTC_TimeStruct RTC_Time;
 	static SemaphoreHandle_t RTC_Semaphore;
 	
+	static bool RTC_Updated = false;
+	extern "C" bool get_RTC_Updated(){ return RTC_Updated; }
+	
+	//锁定RTC操作
+	extern "C" bool Lock_RTC()
+	{
+		if( xSemaphoreTakeRecursive( RTC_Semaphore, portMAX_DELAY ) == pdTRUE )
+			return true;
+		else
+			return false;
+	}
+	extern "C" void UnLock_RTC()
+	{
+		xSemaphoreGiveRecursive( RTC_Semaphore );
+	}
+	
 	//获取RTC时间
 	extern "C" RTC_TimeStruct Get_RTC_Time()
 	{
 		if((RTC->ISR&(1<<5))!=0)
 		{
-			if( xSemaphoreTake( RTC_Semaphore, portMAX_DELAY ) == pdTRUE )
+			if( xSemaphoreTakeRecursive( RTC_Semaphore, portMAX_DELAY ) == pdTRUE )
 			{
 				RTC_Time.SubSeconds=(uint32_t)RTC->SSR;
 				uint32_t RTC_TR = RTC->TR;
@@ -265,7 +281,7 @@ namespace __global_time
 				RTC_Time.WeekDay = ((RTC_DR>>13) & 0x7);
 				
 				RTC->ISR&=~(1<<5);
-				xSemaphoreGive(RTC_Semaphore);
+				xSemaphoreGiveRecursive(RTC_Semaphore);
 			}
 		}
 		return RTC_Time;
@@ -290,7 +306,7 @@ namespace __global_time
 	//设置RTC日期和时间
 	extern "C" void Set_RTC_Time(const RTC_TimeStruct* T)
 	{
-		if( xSemaphoreTake( RTC_Semaphore, 0 ) == pdTRUE )
+		if( xSemaphoreTakeRecursive( RTC_Semaphore, 0 ) == pdTRUE )
 		{
 			//解锁所有 RTC 寄存器
 			RTC->WPR=0xCA;
@@ -318,7 +334,9 @@ namespace __global_time
 			RTC->ISR&=~(1<<7);
 			//Enable the write protection for RTC registers 
 			RTC->WPR=0xFF;
-			xSemaphoreGive(RTC_Semaphore);
+			xSemaphoreGiveRecursive(RTC_Semaphore);
+			
+			RTC_Updated = true;
 		}
 	}
 
@@ -489,6 +507,5 @@ void init_TimeBase()
 	//打开定时器
 	TIM5->CR1 = (1<<7) | (1<<0);
 	
-		
-	RTC_Semaphore = xSemaphoreCreateMutex();
+	RTC_Semaphore = xSemaphoreCreateRecursiveMutex();
 }

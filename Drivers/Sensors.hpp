@@ -55,6 +55,7 @@
 		extern const uint8_t internal_baro_sensor_index;
 		extern const uint8_t default_gps_sensor_index;
 		extern const uint8_t default_rtk_sensor_index;
+		extern const uint8_t default_uwb_sensor_index;
 		extern const uint8_t default_vision_sensor_index;
 		
 		enum Position_Sensor_Type

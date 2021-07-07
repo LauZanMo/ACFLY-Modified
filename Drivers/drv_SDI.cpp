@@ -134,7 +134,7 @@ static void SDI_Server(void* pvParameters)
 	}
 }
 
-static bool OpticalFlow_LC302_DriverInit( Port port, uint32_t param )
+static bool SDI_DriverInit( Port port, uint32_t param )
 {
 	//²¨ÌØÂÊ115200
 	port.SetBaudRate( 115200, 2, 2 );
@@ -147,5 +147,5 @@ static bool OpticalFlow_LC302_DriverInit( Port port, uint32_t param )
 
 void init_drv_SDI()
 {
-	PortFunc_Register( 100, OpticalFlow_LC302_DriverInit );
+	PortFunc_Register( 100, SDI_DriverInit );
 }

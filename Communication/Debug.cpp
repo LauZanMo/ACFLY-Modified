@@ -17,6 +17,11 @@ static void Debug_task(void* pvParameters)
 	{
 		uint8_t port_id = 0;
 		const Port* port = get_CommuPort(port_id);
+		if( port->write==0 )
+		{
+			os_delay(1);
+			continue;
+		}
 		mavlink_message_t msg_sd;
 		
 //		if( mavlink_lock_chan(1,0.01) )
@@ -104,7 +109,7 @@ static void Debug_task(void* pvParameters)
 				TIME::get_System_Run_Time() * 1e6 , 	//boot ms
 				debug_test[10],
 				debug_test[11] ,
-				pos.position.z*0.01 +49 );
+				pos.position.z*0.01 -46 );
 			mavlink_msg_to_send_buffer(port->write, 
 																 port->lock,
 																 port->unlock,
@@ -132,10 +137,14 @@ static void Debug_task(void* pvParameters)
 		get_is_inFlight(&inFlight);
 		if( inFlight )
 		{
-			double logbuf[10];
-			logbuf[0] = debug_test[19];
-			logbuf[1] = debug_test[20];
-			SDLog_Msg_DebugVect( "guangliu", logbuf, 2 );
+			double logbuf[6];
+			logbuf[0] = TIM15->CCR2;
+			logbuf[1] = TIM15->CCR1;
+			logbuf[2] = TIM3->CCR2;
+			logbuf[3] = TIM3->CCR1;
+			logbuf[4] = TIM15->ARR;
+			logbuf[5] = TIM3->ARR;
+			SDLog_Msg_DebugVect( "dianji", logbuf, 6 );
 		}
 //		/*вкл╛*/
 //			uint8_t buf[30];

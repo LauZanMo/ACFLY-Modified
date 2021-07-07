@@ -13,6 +13,7 @@
 #include "Sensors.hpp"
 #include "AuxFuncs.hpp"
 #include "SensorsBackend.hpp"
+#include "drv_LED.hpp"
 bool GCS_is_MP = false;
 static void Msg0_HEARTBEAT( uint8_t Port_index , const mavlink_message_t* msg )
 {
@@ -834,7 +835,6 @@ static void Msg102_VISION_POSITION_ESTIMATE( uint8_t Port_index , const mavlink_
 	vector3<double> posVSlam;
 	posVSlam.x = BodyHeading2ENU_x(msg_rd->x * 100 , msg_rd->y * 100 , sinYaw , cosYaw);
 	posVSlam.y = BodyHeading2ENU_y(msg_rd->x * 100 , msg_rd->y * 100 , sinYaw , cosYaw);
-//	posVSlam.z = msg_rd->z * 100;
 	PositionSensorUpdatePosition(default_vslam_pos_index, posVSlam, true);
 }
 
@@ -865,7 +865,7 @@ static void Msg103_VISION_SPEED_ESTIMATE( uint8_t Port_index , const mavlink_mes
 	vector3<double> velVSlam;
 	velVSlam.x = BodyHeading2ENU_x(msg_rd->x * 100 , msg_rd->y * 100 , sinYaw , cosYaw);
 	velVSlam.y = BodyHeading2ENU_y(msg_rd->x * 100 , msg_rd->y * 100 , sinYaw , cosYaw);
-//	velVSlam.z = msg_rd->z * 100;
+  	velVSlam.z = msg_rd->z * 100;
 	PositionSensorUpdateVel(default_vslam_vel_index, velVSlam, true);
 }
 
@@ -954,8 +954,6 @@ static void Msg233_GPS_RTCM_DATA( uint8_t Port_index , const mavlink_message_t* 
 			inject_RtkPorts(RTCM_buffer, total_length);
 	}
 }
-
-
 	
 static void Msg243_SET_HOME_POSITION( uint8_t Port_index , const mavlink_message_t* msg )
 {
@@ -964,6 +962,16 @@ static void Msg243_SET_HOME_POSITION( uint8_t Port_index , const mavlink_message
 //	HomeLatLon.y = msg_rd->longitude*1e-7;
 //	HomeLatLon.x = msg_rd->latitude*1e-7;
 ////	setHomeLatLon(&HomeLatLon);
+}
+
+static void Msg258_PLAY_TUNE( uint8_t Port_index , const mavlink_message_t* msg )
+{
+	const mavlink_play_tune_t* msg_rd = (mavlink_play_tune_t*)msg->payload64;
+	
+	bool state = (bool)msg_rd->tune[0];
+	unsigned short freq = (((unsigned short)msg_rd->tune[1]) << 8) + (unsigned short)msg_rd->tune[2];
+	set_BuzzerFreq(freq);
+	set_BuzzerOnOff(state);
 }
 
 void (*const Mavlink_RC_Process[])( uint8_t Port_index , const mavlink_message_t* msg_sd ) = 
@@ -1226,7 +1234,7 @@ void (*const Mavlink_RC_Process[])( uint8_t Port_index , const mavlink_message_t
 	/*255-*/	0	,
 	/*256-*/	0	,
 	/*257-*/	0	,
-	/*258-*/	0	,
+	/*258-*/	Msg258_PLAY_TUNE	,
 	/*259-*/	0	,
 	/*260-*/	0	,
 	/*261-*/	0	,

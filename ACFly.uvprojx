@@ -829,6 +829,11 @@
               <FilePath>.\Drivers\drv_ExtLed.cpp</FilePath>
             </File>
             <File>
+              <FileName>drv_BootLoader.cpp</FileName>
+              <FileType>8</FileType>
+              <FilePath>.\Drivers\drv_BootLoader.cpp</FilePath>
+            </File>
+            <File>
               <FileName>drv_InternalMag.cpp</FileName>
               <FileType>8</FileType>
               <FilePath>.\Drivers\drv_InternalMag.cpp</FilePath>
@@ -864,6 +869,11 @@
               <FilePath>.\Drivers\drv_OpticalFlow_GL9306.cpp</FilePath>
             </File>
             <File>
+              <FileName>drv_UWB_LinkTrack.cpp</FileName>
+              <FileType>8</FileType>
+              <FilePath>.\Drivers\drv_UWB_LinkTrack.cpp</FilePath>
+            </File>
+            <File>
               <FileName>drv_AnoOpticalFlow.cpp</FileName>
               <FileType>8</FileType>
               <FilePath>.\Drivers\drv_AnoOpticalFlow.cpp</FilePath>
@@ -872,6 +882,13 @@
         </Group>
         <Group>
           <GroupName>USBDevice</GroupName>
+          <Files>
+            <File>
+              <FileName>usb_composite.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\USBDevice\usb_composite.c</FilePath>
+            </File>
+          </Files>
         </Group>
         <Group>
           <GroupName>LittleFs</GroupName>

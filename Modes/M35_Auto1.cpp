@@ -64,6 +64,8 @@ ModeResult M35_Auto1::main_func( void* param1, uint32_t param2 )
 	uint8_t MissionButtonZone = 255;
 	uint8_t RTLButtonZone = 255;
 	uint8_t cMode = AFunc_PosHold;
+	if(param1)
+		change_Mode(*(AFunc*)param1);
 	
 	//当前执行任务的序号
 	uint16_t mission_ind = 0;
@@ -433,6 +435,11 @@ RTL:
 										//转到高度调整任务
 										mission_ind = altitude_adjust;
 									}
+									else
+									{
+										//关闭角度控制器
+										Attitude_Control_Disable();
+									}
 								}
 								else
 								{
@@ -572,14 +579,32 @@ RTL:
 										//转到降落任务
 										mission_ind = land;
 									}
+									else
+									{
+										//刹车
+										Position_Control_set_XYLock();
+										Attitude_Control_set_YawLock();
+										Position_Control_set_ZLock();
+									}
 								}
 						}
 						else
 						{
-							//无指令控制则刹车
-							Position_Control_set_XYLock();
-							Attitude_Control_set_YawLock();
-							Position_Control_set_ZLock();
+							//判断滞空
+							bool inFlight;
+							get_is_inFlight(&inFlight);
+							if( inFlight==false )
+							{
+								//关闭角度控制器
+								Attitude_Control_Disable();
+							}
+							else
+							{
+								//无指令控制则刹车
+								Position_Control_set_XYLock();
+								Attitude_Control_set_YawLock();
+								Position_Control_set_ZLock();
+							}
 						}
 						
 						break;
@@ -739,9 +764,6 @@ RTL:
 						get_is_inFlight(&inFlight);
 						if( inFlight==false )
 						{
-							//关闭角度控制器
-							Attitude_Control_Disable();
-							
 							//回到mavlink控制模式
 							mission_ind = mavlink_control;
 							

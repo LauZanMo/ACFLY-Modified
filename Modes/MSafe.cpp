@@ -270,6 +270,7 @@ static void MSafe_Server(void* pvParameters)
 					if( firstAuto != 31 )
 					{	//刚进入失控状态
 						//刹车锁位置
+						Attitude_Control_set_YawLock();
 						Position_Control_set_XYLock();
 						Position_Control_set_ZLock();
 						if( firstAuto != 16 )

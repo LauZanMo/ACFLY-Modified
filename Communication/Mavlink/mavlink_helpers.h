@@ -423,9 +423,12 @@ MAVLINK_HELPER uint16_t mavlink_msg_to_send_buffer(
 							const mavlink_message_t *msg ,
 							double SyncTIMEOUT, double TIMEOUT)
 {
+	if( write_port==0 || lock==0 || unlock==0 )
+		return 0;
+	
 	uint8_t signature_len, header_len;
-        uint8_t length = msg->len;
-  
+	uint8_t length = msg->len;
+
 	uint8_t buf[10];
 	lock(SyncTIMEOUT);
 	if (msg->magic == MAVLINK_STX_MAVLINK1) {
@@ -461,10 +464,13 @@ MAVLINK_HELPER uint16_t mavlink_msg_to_send_buffer(
 	if (signature_len > 0) {
 		memcpy(&buf[2], msg->signature, signature_len);
 	}
-	write_port( &buf[0] , 2 + signature_len, SyncTIMEOUT, TIMEOUT );
+	uint16_t written_bytes = write_port( &buf[0] , 2 + signature_len, SyncTIMEOUT, TIMEOUT );
 	unlock();
 	
-	return header_len + 1 + 2 + (uint16_t)length + (uint16_t)signature_len;
+	if( written_bytes == 2 + signature_len )
+		return header_len + 1 + 2 + (uint16_t)length + (uint16_t)signature_len;
+	else
+		return 0;
 }
 
 union __mavlink_bitfield {

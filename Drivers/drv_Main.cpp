@@ -36,6 +36,9 @@
 #include "drv_OpticalFlow_JL32xx.hpp"
 #include "drv_OpticalFlow_GL9306.hpp"
 #include "drv_AnoOpticalFlow.hpp"
+
+#include "drv_UWB_LinkTrack.hpp"
+
 #include "drv_TFMini.hpp"
 
 #include "drv_SDI.hpp"
@@ -104,9 +107,10 @@ void init_drv_Main()
 	init_drv_OpticalFlow_LC306();
 	init_drv_OpticalFlow_JL32xx();
 	init_drv_OpticalFlow_GL9306();
-
-	//匿名光流驱动
 	init_drv_AnoOpticalFlow();
+	
+	//UWB驱动
+	init_drv_UWB_LinkTrack();
 	
 	//测距传感器驱动
 	init_drv_ultrasonic();
@@ -115,5 +119,6 @@ void init_drv_Main()
 	//外部LED驱动
 	init_drv_ExtLed();
 	
-	//init_drv_SDI();
+	//二次开发接口驱动
+	init_drv_SDI();
 }

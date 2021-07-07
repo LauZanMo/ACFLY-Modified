@@ -65,28 +65,28 @@ void DriverInit_task(void* pvParameters)
 		struct
 		{
 			uint32_t calib_ESC[2];	//校准电调
-			uint32_t calib_ESC_T[2];	//电调校准时间
+			float calib_ESC_T[2];	//电调校准时间
 			uint32_t boot_count[2];	//系统运行次数
 			float Firmvare_Version[2];	//固件版本
 		}init_cfg;
 		init_cfg.calib_ESC[0] = 0;
-		init_cfg.calib_ESC_T[0] = 3;
+		init_cfg.calib_ESC_T[0] = 1.5;
 		init_cfg.boot_count[0] = 0;
-		init_cfg.Firmvare_Version[0] = 16.3;
+		init_cfg.Firmvare_Version[0] = 16.5;
 		MAV_PARAM_TYPE param_types[] = {
 			MAV_PARAM_TYPE_UINT32 ,	//校准电调
-			MAV_PARAM_TYPE_UINT32 ,	//电调校准时间
+			MAV_PARAM_TYPE_REAL32 ,	//电调校准时间
 			MAV_PARAM_TYPE_UINT32 , //系统运行次数
 			MAV_PARAM_TYPE_REAL32   //固件版本
 			
 		};
 		SName param_names[] = {
-			"Init_CalibESC",	//校准电调
-			"Init_CalibESC_T",//电调校准时间
-			"Init_Boot_Count",//系统运行次数
-			"Init_Firmware_V" //固件版本
+			"Init_CalibESC",	 //校准电调
+			"Init_CalibESC_T", //电调校准时间
+			"Init_Boot_Count", //系统运行次数
+			"Init_Firmware_V"  //固件版本
 		};
-		ParamGroupRegister( "Init", 1, 4, param_types, param_names, (uint64_t*)&init_cfg );	
+		ParamGroupRegister( "Init", 1, sizeof(init_cfg)/8, param_types, param_names, (uint64_t*)&init_cfg );	
 		/*注册初始化参数*/
 	
 	//完成初始化

@@ -21,6 +21,8 @@
 		float STThrottle[2];	//起转油门
 		float NonlinearFactor[2];	//电机非线性参数
 		float FullThrRatio[2];	//满油门比例
+		uint8_t STMode[8];	//启动模式
+		float STDelay[2];	//启动延时
 		float T[2];	//惯性时间T
 		float b[6];	//RPY增益b
 		float TD4_P1[6];	//RPY前馈TD4滤波器P1
@@ -32,6 +34,7 @@
 		float P3[6];	//反馈增益P3
 		float P4[6];	//反馈增益P4
 		float beta[2];	//ESO beta
+		float beta_h[2];	//ESO_h beta
 		float maxLean[2];	//最大倾斜角
 		float maxRPSp[2];	//最大Pitch Roll速度
 		float maxRPAcc[2]; //最大Pitch Roll加速度
@@ -111,6 +114,7 @@
 	static ESO_AngularRate ESO[3];
 	//高度ESO
 	static double throttle_u = 0;
+	static double outputThrottle = 0;
 	static ESO_h ESO_height;
 	static double hover_throttle = 0;
 	static double WindDisturbance_x = 0;
@@ -135,6 +139,7 @@
 		double AccZ = AccZ_filter.run(AccENU.z);
 		
 		//观测悬停油门
+		outputThrottle = throttle;
 		double r_throttle = throttle - output_minimum_throttle;
 		if( r_throttle < 0 )
 			r_throttle = 0;
@@ -342,6 +347,8 @@
 /*控制接口*/
 	//保护方式
 	static uint8_t SafeBt = 0;
+	//初始化计数
+	static int32_t StartCounter = 0;
 	
 	//期望TD4滤波器
 	static TD3_2DSL Target_tracker_RP;
@@ -413,7 +420,7 @@
 				ESO[2].init( 1.0/(CtrlRateHz*CtrlRateDiv), cfg.b[4]*b_scale, cfg.beta[0], cfg.beta[0], CtrlRateHz*CtrlRateDiv );
 				
 				//初始化高度ESO
-				ESO_height.init( cfg.T[0], 4.5, CtrlRateHz*CtrlRateDiv );
+				ESO_height.init( cfg.T[0], cfg.beta_h[0], CtrlRateHz*CtrlRateDiv );
 			
 				//初始化期望TD4滤波器
 				Target_tracker_RP.P1=cfg.TD4_P1[0];
@@ -431,8 +438,6 @@
 				Target_trackerY.r3n=Target_trackerY.r3p=degree2rad(cfg.maxYAcc[0]);
 			/*初始化*/
 			
-			//顺序起转电机
-			double pwm_out[8] = {0};
 			uint8_t main_motors = UAV_MainMotorCount(cfg.UAVType);
 			if( main_motors == 0 )
 			{
@@ -440,12 +445,7 @@
 				return false;
 			}
 			set_MainMotorCount(main_motors);
-			for( uint8_t i = 0; i < main_motors; ++i )
-			{
-				pwm_out[i] = cfg.STThrottle[0];						
-				MainMotor_PWM_Out( pwm_out );
-				os_delay(0.3);
-			}
+			StartCounter = 0;
 			
 			Attitude_Control_Enabled = true;
 			target_Yaw = quat.getYaw();
@@ -492,6 +492,16 @@
 		}
 		return false;
 	}
+	bool get_OutputThrottle( double* result, double TIMEOUT )
+	{
+		if( LockCtrl(TIMEOUT) )
+		{
+			*result = outputThrottle;
+			UnlockCtrl();
+			return true;
+		}
+		return false;
+	}
 	bool Attitude_Control_set_Throttle( double thr, double TIMEOUT )
 	{
 		if( isnan(thr) || isinf(thr) )
@@ -505,6 +515,13 @@
 			}
 			bool alt_enabled;
 			is_Altitude_Control_Enabled(&alt_enabled);
+			bool isAtCtrl = (xTaskGetCurrentTaskHandle()==ControlTaskHandle);
+			if( alt_enabled && !isAtCtrl )
+			{	//位置控制器起作用时不允许用户控制
+				UnlockCtrl();
+				return false;
+			}
+			
 			bool isMSafe = (xTaskGetCurrentTaskHandle()==MSafeTaskHandle);
 			if( !isMSafe && alt_enabled==false && ForceMSafeCtrl )
 			{	//屏蔽用户控制
@@ -555,10 +572,17 @@
 			}
 			bool pos_enabled;
 			is_Position_Control_Enabled(&pos_enabled);
+			bool isAtCtrl = (xTaskGetCurrentTaskHandle()==ControlTaskHandle);
+			if( pos_enabled && !isAtCtrl )
+			{	//位置控制器起作用时不允许用户控制
+				UnlockCtrl();
+				return false;
+			}
+			
 			bool isMSafe = (xTaskGetCurrentTaskHandle()==MSafeTaskHandle);
 			if( !isMSafe && pos_enabled==false && ForceMSafeCtrl )
 			{	//屏蔽用户控制
-				last_ZCtrlTime = TIME::now();
+				last_XYCtrlTime = TIME::now();
 				UnlockCtrl();
 				return false;
 			}
@@ -640,7 +664,7 @@
 		//屏蔽用户控制
 		bool isMSafe = (xTaskGetCurrentTaskHandle()==MSafeTaskHandle);
 		if( !isMSafe && ForceMSafeCtrl )
-			return false;
+			return false;	
 		
 		Quaternion quat, quatY;
 		get_Airframe_quat(&quat);
@@ -652,11 +676,22 @@
 				UnlockCtrl();
 				return false;
 			}
+			
+			Position_ControlMode pos_mode;
+			get_Position_ControlMode(&pos_mode);
+			bool isAtCtrl = (xTaskGetCurrentTaskHandle()==ControlTaskHandle);
+			if( Is_YawAutoMode(pos_mode) && !isAtCtrl )
+			{	//位置控制器起作用时不允许用户控制
+				UnlockCtrl();
+				return false;
+			}
+			
 			if( Yaw_ControlMode != Attitude_ControlMode_Angle )
 			{
 				Target_trackerY.x1 = quat.getYaw();
 				Yaw_ControlMode = Attitude_ControlMode_Angle;
 			}
+			
 			double yaw_err = Mod( Yaw - quatY.getYaw(), 2*Pi );
 			if(yaw_err > Pi)
 				yaw_err -= 2*Pi;
@@ -688,6 +723,16 @@
 				UnlockCtrl();
 				return false;
 			}
+			
+			Position_ControlMode pos_mode;
+			get_Position_ControlMode(&pos_mode);
+			bool isAtCtrl = (xTaskGetCurrentTaskHandle()==ControlTaskHandle);
+			if( Is_YawAutoMode(pos_mode) && !isAtCtrl )
+			{	//位置控制器起作用时不允许用户控制
+				UnlockCtrl();
+				return false;
+			}
+			
 			double currentYaw = quat.getYaw();
 			if( Yaw_ControlMode != Attitude_ControlMode_Angle )
 			{
@@ -718,6 +763,16 @@
 				UnlockCtrl();
 				return false;
 			}
+			
+			Position_ControlMode pos_mode;
+			get_Position_ControlMode(&pos_mode);
+			bool isAtCtrl = (xTaskGetCurrentTaskHandle()==ControlTaskHandle);
+			if( Is_YawAutoMode(pos_mode) && !isAtCtrl )
+			{	//位置控制器起作用时不允许用户控制
+				UnlockCtrl();
+				return false;
+			}
+			
 			target_AngularRate.z = YawRate;
 			Yaw_ControlMode = Attitude_ControlMode_AngularRate;
 			
@@ -739,6 +794,16 @@
 				UnlockCtrl();
 				return false;
 			}
+			
+			Position_ControlMode pos_mode;
+			get_Position_ControlMode(&pos_mode);
+			bool isAtCtrl = (xTaskGetCurrentTaskHandle()==ControlTaskHandle);
+			if( Is_YawAutoMode(pos_mode) && !isAtCtrl )
+			{	//位置控制器起作用时不允许用户控制
+				UnlockCtrl();
+				return false;
+			}
+			
 			if( Yaw_ControlMode == Attitude_ControlMode_AngularRate )
 				Yaw_ControlMode = Attitude_ControlMode_Locking;
 			
@@ -790,23 +855,58 @@ void ctrl_Attitude()
 		return;
 	}
 	
+	//启动初始化
+	if( StartCounter < 1e6 )
+	{	//还未进行启动初始化
+		if( StartCounter >= 0 )
+		{	//启动动作
+			switch(cfg.STMode[0])
+			{	//顺序起转电机
+				case 1:
+				{	
+					uint8_t main_motors = UAV_MainMotorCount(cfg.UAVType);
+					if( StartCounter < 0.3*main_motors * CtrlRateHz )
+					{
+						double pwm_out[8] = {0};
+						for( uint8_t i = 0; i < main_motors; ++i )
+						{
+							if( StartCounter > 0.3*i * CtrlRateHz )
+								pwm_out[i] = cfg.STThrottle[0];
+							else
+								break;
+						}
+						MainMotor_PWM_Out( pwm_out );
+						++StartCounter;
+					}
+					else
+						StartCounter = -1;
+					break;
+				}
+				
+				default:
+				{
+					double pwm_out[8] = {0};
+					uint8_t main_motors = UAV_MainMotorCount(cfg.UAVType);
+					for( uint8_t i = 0; i < main_motors; ++i )
+						pwm_out[i] = cfg.STThrottle[0];
+					MainMotor_PWM_Out( pwm_out );
+					StartCounter = -1;
+					break;
+				}
+			}
+		}
+		else
+		{	//启动延时
+			if( (-StartCounter) > cfg.STDelay[0]*CtrlRateHz )
+				StartCounter = 1e9;
+			else
+				--StartCounter;
+		}
+		AC_angle_error = 0;
+		update_output_throttle( cfg.STThrottle[0] , h );
+		return;
+	}
 	
-//	//根据电池电压调整控制对象增益
-//	float BatV = getBatteryVoltage();
-//	float VST = Cfg_get_BatSTVoltage();
-//	if( BatV > 7 && VST > 7 )
-//	{
-//		float scale = BatV / VST;
-//		ESO[0].b = Cfg_get_RPYCtrl_b(0) * scale;
-//		ESO[1].b = Cfg_get_RPYCtrl_b(1) * scale;
-//		ESO[2].b = Cfg_get_RPYCtrl_b(2) * scale;
-//	}
-//	else
-//	{
-//		ESO[0].b = Cfg_get_RPYCtrl_b(0);
-//		ESO[1].b = Cfg_get_RPYCtrl_b(1);
-//		ESO[2].b = Cfg_get_RPYCtrl_b(2);
-//	}
 	
 	//读取电池电压
 	float BatVoltage = get_MainBatteryVoltage_filted();
@@ -921,7 +1021,9 @@ void ctrl_Attitude()
 			Quaternion current_quat_conj = current_quat_PR;	current_quat_conj.conjugate();
 			vector3<double> PR_rotation = ( target_quat_PR * current_quat_conj ).get_Rotation_vec();
 			vector3<double> feed_foward_ratePR = { Target_tracker_RP.x2.x, Target_tracker_RP.x2.y , 0 };
-			target_angular_rate_RP = ( PR_rotation * Ps ) + feed_foward_ratePR;
+			target_angular_rate_RP = ( PR_rotation * Ps );
+			target_angular_rate_RP.constrain(cfg.maxRPSp[0]);
+			target_angular_rate_RP += feed_foward_ratePR;
 			
 			AC_angle_error = safe_sqrt( PR_rotation.get_square() );
 			break;
@@ -936,7 +1038,7 @@ void ctrl_Attitude()
 			if(inFlight)
 			{
 				//TD4滤目标角度
-				Target_trackerY.r2n = Target_trackerY.r2p = degree2rad(cfg.maxYSp[0]);
+				Target_trackerY.r2n = Target_trackerY.r2p = degree2rad(cfg.maxYSp[0]*0.7);
 				Target_trackerY.track4( target_Yaw , 1.0f / CtrlRateHz );
 				
 				//角度误差化为-180 - +180
@@ -1063,7 +1165,7 @@ void ctrl_Attitude()
 		outRoll = 	ESO[0].T * ( angular_acceleration_error.x * P3.x )/ESO[0].b;
 		outPitch =	ESO[1].T * ( angular_acceleration_error.y * P3.y )/ESO[1].b;
 		//outYaw =		ESO[2].T * ( angular_acceleration_error.z * P.z )/ESO[2].b;
-		outYaw = ( target_angular_acceleration.z ) / ESO[2].b;
+		outYaw = ( target_angular_acceleration.z - disturbance.z ) / ESO[2].b;
 	}
 	
 //	outRoll_filted += 80 * h * ( outRoll - outRoll_filted );
@@ -1442,6 +1544,8 @@ void init_Ctrl_Attitude()
 	cfg.STThrottle[0] = 10;
 	cfg.NonlinearFactor[0] = 0.45;
 	cfg.FullThrRatio[0] = 0.95;
+	cfg.STMode[0] = 1;
+	cfg.STDelay[0] = 0;
 	cfg.T[0] = 0.1;
 	cfg.b[0] = 5.5;	cfg.b[2] = 5.5;	cfg.b[4] = 1.0;
 	cfg.TD4_P1[0] = 15;	cfg.TD4_P1[2] = 15;	cfg.TD4_P1[4] = 2;
@@ -1453,6 +1557,7 @@ void init_Ctrl_Attitude()
 	cfg.P3[0] = 50;	cfg.P3[2] = 50;	cfg.P3[4] = 25;
 	cfg.P4[0] = 15;	cfg.P4[2] = 15;	cfg.P4[4] = 15;
 	cfg.beta[0] = 12;
+	cfg.beta_h[0] = 5;
 	cfg.maxLean[0] = 35;
 	cfg.maxRPSp[0] = 350;
 	cfg.maxRPAcc[0] = 7000;
@@ -1463,6 +1568,8 @@ void init_Ctrl_Attitude()
 		MAV_PARAM_TYPE_REAL32 ,	//起转油门
 		MAV_PARAM_TYPE_REAL32 ,	//非线性参数
 		MAV_PARAM_TYPE_REAL32 ,	//满油门比例
+		MAV_PARAM_TYPE_UINT8 ,	//启动模式
+		MAV_PARAM_TYPE_REAL32 ,	//启动延时
 		MAV_PARAM_TYPE_REAL32 ,	//T
 		MAV_PARAM_TYPE_REAL32 ,MAV_PARAM_TYPE_REAL32 ,MAV_PARAM_TYPE_REAL32 ,	//b[3]
 		MAV_PARAM_TYPE_REAL32 ,MAV_PARAM_TYPE_REAL32 ,MAV_PARAM_TYPE_REAL32 ,	//TD4_P1[3]
@@ -1474,6 +1581,7 @@ void init_Ctrl_Attitude()
 		MAV_PARAM_TYPE_REAL32 ,MAV_PARAM_TYPE_REAL32 ,MAV_PARAM_TYPE_REAL32 ,	//P3[3]
 		MAV_PARAM_TYPE_REAL32 ,MAV_PARAM_TYPE_REAL32 ,MAV_PARAM_TYPE_REAL32 ,	//P4[3]
 		MAV_PARAM_TYPE_REAL32 ,	//beta
+		MAV_PARAM_TYPE_REAL32 ,	//h_beta
 		MAV_PARAM_TYPE_REAL32 ,	//最大倾斜角
 		MAV_PARAM_TYPE_REAL32 ,	//maxRPSp
 		MAV_PARAM_TYPE_REAL32 ,	//maxRPAcc
@@ -1485,6 +1593,8 @@ void init_Ctrl_Attitude()
 		"AC_STThr" ,	//起转油门
 		"AC_NonlinF" ,	//非线性参数
 		"AC_FullThrR" ,	//满油门比例
+		"AC_STMode" ,	//启动模式
+		"AC_STDelay" ,//启动延时
 		"AC_T" ,	//T
 		"AC_Roll_b" ,"AC_Pitch_b" ,"AC_Yaw_b" ,	//b[3]
 		"AC_Roll_TD4P1" ,"AC_Pitch_TD4P1" ,"AC_Yaw_TD4P1" ,	//TD4_P1[3]
@@ -1496,11 +1606,12 @@ void init_Ctrl_Attitude()
 		"AC_Roll_P3" ,"AC_Pitch_P3" ,"AC_Yaw_P3" ,	//P3[3]
 		"AC_Roll_P4" ,"AC_Pitch_P4" ,"AC_Yaw_P4" ,	//P4[3]
 		"AC_Beta" ,	//beta
+		"AC_hBeta" ,	//h_beta
 		"AC_maxLean" ,	//最大倾斜角
 		"AC_maxRPSp" ,	//最大Pitch Roll速度
 		"AC_maxRPAcc" ,	//最大Pitch Roll加速度
 		"AC_maxYSp" ,	//最大偏航速度
 		"AC_maxYAcc" ,	//最大偏航加速度
 	};
-	ParamGroupRegister( "AttCtrl", 3, 38, param_types, param_names, (uint64_t*)&cfg );
+	ParamGroupRegister( "AttCtrl", 3, sizeof(cfg)/8, param_types, param_names, (uint64_t*)&cfg );
 }

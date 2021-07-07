@@ -360,6 +360,8 @@ static void Modes_Server(void* pvParameters)
 				{	//do set mode
 					if( msg.params[0] == 0 )
 					{
+						msg_handled = true;
+						MF_mode = AFunc_Mission;
 						changeMode( msg.params[1], &MF_mode, 0, 0,
 												&msg_available, &msg_handled, &msg );
 						reset_States;

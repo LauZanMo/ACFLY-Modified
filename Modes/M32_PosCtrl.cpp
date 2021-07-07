@@ -928,7 +928,13 @@ RTL:
 					{
 						if( camTriggDist > 0 )
 						{
-							os_delay(0.5);
+							for( uint8_t i = 0; i < 10; ++i )
+							{
+								Position_Control_set_XYLock();
+								Position_Control_set_ZLock();
+								Attitude_Control_set_YawLock();
+								os_delay(0.05);
+							}
 							InflightCmd_CamTakePhoto();
 						}
 					}
@@ -1276,7 +1282,7 @@ RTL:
 					in_symmetry_range_mid( rc.data[2] , 50 , MFunc_cfg.NeutralZone[0] ) &&
 					in_symmetry_range_mid( rc.data[3] , 50 , MFunc_cfg.NeutralZone[0] );
 				
-				if( sticks_in_neutral && pos_ena )
+				if( sticks_in_neutral && pos_ena && cMode==AFunc_PosHold )
 				{	//摇杆在中间且在定点模式下允许执行命令
 					if(msg_available)
 					{
@@ -1327,26 +1333,37 @@ RTL:
 					if( pos_ena )
 					{
 						
-						//俯仰横滚杆控水平速度
-						if( in_symmetry_range_mid( rc.data[3] , 50 , MFunc_cfg.NeutralZone[0] ) && in_symmetry_range_mid( rc.data[2] , 50 , MFunc_cfg.NeutralZone[0] ) )							
-							Position_Control_set_XYLock();
-						else
+						if( cMode==AFunc_ManualCircle )
 						{
-							double RPCtrlScale = atan2( get_maxAccXY() / 50.0, GravityAcc );
-							double XYCtrlScale = get_maxVelXY() / 50.0;						
 							double roll_sitck_d = remove_deadband( rc.data[3] - 50.0, (double)MFunc_cfg.NeutralZone[0] );
 							double pitch_sitck_d = remove_deadband( rc.data[2] - 50.0, (double)MFunc_cfg.NeutralZone[0] );
-							vector3<double> velocityFLU;
-							get_VelocityFLU_Ctrl(&velocityFLU);
-							double vel_stick_err_pitch = velocityFLU.x/XYCtrlScale - pitch_sitck_d;
-							double vel_stick_err_roll = velocityFLU.y/XYCtrlScale - -roll_sitck_d;
-							constrain_vector( vel_stick_err_roll, vel_stick_err_pitch, 50 );
-							Position_Control_set_TargetVelocityBodyHeadingXY_AngleLimit( \
-								pitch_sitck_d * XYCtrlScale ,\
-								-roll_sitck_d * XYCtrlScale , \
-								fabs( vel_stick_err_roll  )*RPCtrlScale, \
-								fabs( vel_stick_err_pitch )*RPCtrlScale \
-							);
+							double yaw_sitck_d = remove_deadband( rc.data[1] - 50.0, (double)MFunc_cfg.NeutralZone[0] );
+							double h = 1.0/freq;
+							Position_Control_do_ManualCircleRelative( 5*roll_sitck_d*h, -3*pitch_sitck_d*h, 3*yaw_sitck_d*h );
+						}
+						else
+						{
+							//俯仰横滚杆控水平速度
+							if( in_symmetry_range_mid( rc.data[3] , 50 , MFunc_cfg.NeutralZone[0] ) && in_symmetry_range_mid( rc.data[2] , 50 , MFunc_cfg.NeutralZone[0] ) )							
+								Position_Control_set_XYLock();
+							else
+							{
+								double RPCtrlScale = atan2( get_maxAccXY() / 50.0, GravityAcc );
+								double XYCtrlScale = get_maxVelXY() / 50.0;						
+								double roll_sitck_d = remove_deadband( rc.data[3] - 50.0, (double)MFunc_cfg.NeutralZone[0] );
+								double pitch_sitck_d = remove_deadband( rc.data[2] - 50.0, (double)MFunc_cfg.NeutralZone[0] );
+								vector3<double> velocityFLU;
+								get_VelocityFLU_Ctrl(&velocityFLU);
+								double vel_stick_err_pitch = velocityFLU.x/XYCtrlScale - pitch_sitck_d;
+								double vel_stick_err_roll = velocityFLU.y/XYCtrlScale - -roll_sitck_d;
+								constrain_vector( vel_stick_err_roll, vel_stick_err_pitch, 50 );
+								Position_Control_set_TargetVelocityBodyHeadingXY_AngleLimit( \
+									pitch_sitck_d * XYCtrlScale ,\
+									-roll_sitck_d * XYCtrlScale , \
+									fabs( vel_stick_err_roll  )*RPCtrlScale, \
+									fabs( vel_stick_err_pitch )*RPCtrlScale \
+								);
+							}
 						}
 					}
 					else
@@ -1380,7 +1397,7 @@ RTL:
 					if( in_symmetry_range_mid( rc.data[1] , 50 , MFunc_cfg.NeutralZone[0] ) )
 						Attitude_Control_set_YawLock();
 					else
-						Attitude_Control_set_Target_YawRate( ( 50 - rc.data[1] )*YCtrlScale );						
+						Attitude_Control_set_Target_YawRate( ( 50 - rc.data[1] )*YCtrlScale );							
 				}
 			}
 			else

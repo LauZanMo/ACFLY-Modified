@@ -11,6 +11,8 @@ void UnlockCtrl();
 extern TIME last_XYCtrlTime;
 extern TIME last_ZCtrlTime;
 
+//控制线程句柄
+extern TaskHandle_t ControlTaskHandle;
 //MSafe任务句柄
 extern TaskHandle_t MSafeTaskHandle;
 //强制Safe控制

@@ -15,6 +15,8 @@
 #include "FreeRTOS.h"
 #include "semphr.h"
 
+TaskHandle_t ControlTaskHandle;
+
 /*控制系统互斥锁*/
 	static SemaphoreHandle_t CtrlMutex = xSemaphoreCreateRecursiveMutex();
 	bool LockCtrl( double TIMEOUT )
@@ -296,7 +298,7 @@ void init_ControlSystem()
 {
 	init_Ctrl_Attitude();
 	init_Ctrl_Position();
-	xTaskCreate( ControlSystem_Task, "ControlSystem", 4096, NULL, SysPriority_ControlSystem, NULL);
+	xTaskCreate( ControlSystem_Task, "ControlSystem", 4096, NULL, SysPriority_ControlSystem, &ControlTaskHandle );
 	
 	/*注册电池参数*/
 		BatteryCfg initial_cfg;

@@ -271,6 +271,8 @@ static void GPS_Server(void* pvParameters)
 	rtk_port.unlock = driver_info.port.unlock;
 	int8_t rtk_port_ind = RtkPortRegister(rtk_port);
 
+	bool rtc_updated = false;
+	
 	//等待初始化完成
 	while( getInitializationCompleted() == false )
 		os_delay(0.1);
@@ -340,6 +342,24 @@ GPS_CheckBaud:
 	}
 	
 GPS_Present:
+	//重发配置
+	uint16_t sd_length = 0;
+	for(uint32_t i=0; i < sizeof(ubloxInit); i++)
+	{
+		if( i<sizeof(ubloxInit)-1 && ubloxInit[i] == 0xB5 && ubloxInit[i+1] == 0x62 && i>2 )
+		{
+			driver_info.port.wait_sent(1);
+			os_delay(0.11);
+			driver_info.port.write( &ubloxInit[i-sd_length], sd_length, portMAX_DELAY, portMAX_DELAY );
+			sd_length = 0;
+		}
+		++sd_length;
+	}
+	driver_info.port.wait_sent(1);
+	os_delay(0.11);
+	driver_info.port.write( &ubloxInit[sizeof(ubloxInit)-sd_length], sd_length, portMAX_DELAY, portMAX_DELAY );
+	
+	//发送GNSS配置
 	GpsConfig gps_cfg;
 	if( ReadParamGroup( "GPS1Cfg", (uint64_t*)&gps_cfg, 0 ) == PR_OK )
 	{
@@ -471,19 +491,6 @@ GPS_Present:
 					}__attribute__((packed));
 					UBX_NAV_PVT_Pack* pack = (UBX_NAV_PVT_Pack*)&frame_datas[2];
 					
-					/*更新RTC时间(本地时间)*/	
-					static TIME rtc_update_time(1);
-          if( (pack->valid & (0x03)) == (0x03)  && rtc_update_time.get_pass_time() > 5)	{
-						int8_t TimeZone = 8;//默认东8区(北京时区)
-						RTC_TimeStruct rtc;
-						if((pack->flags & 1) == 1 && pack->fix_type == 0x03)
-							TimeZone = GetTimeZone(pack->lat*1e-7,pack->lon*1e-7);
-					  UTC2LocalTime(&rtc, pack->year, pack->month, pack->day, pack->hour, pack->min, pack->sec, TimeZone, 0);
-						Set_RTC_Time(&rtc);	
-						rtc_update_time = TIME::now();
-					}						
-          /*更新RTC时时间(本地时间)*/							
-
 					uint8_t gps_fix = 0;
 					if( pack->fix_type == 0 )
 						gps_fix= 1;
@@ -535,6 +542,25 @@ GPS_Present:
 						gps_available = z_available = false;
 						GPS_stable_start_time.set_invalid();
 					}
+					
+					/*更新RTC时间(本地时间)*/	
+						if( rtc_updated==false && gps_available )	{
+							if( Lock_RTC() )
+							{
+								if( get_RTC_Updated() == false )
+								{
+									int8_t TimeZone = 8;//默认东8区(北京时区)
+									RTC_TimeStruct rtc;
+									if((pack->flags & 1) == 1 && pack->fix_type == 0x03)
+										TimeZone = GetTimeZone(pack->lat*1e-7,pack->lon*1e-7);
+									UTC2LocalTime(&rtc, pack->year, pack->month, pack->day, pack->hour, pack->min, pack->sec, TimeZone, 0);
+									Set_RTC_Time(&rtc);	
+								}
+								rtc_updated = true;
+								UnLock_RTC();
+							}
+						}
+          /*更新RTC时时间(本地时间)*/
 					
 					addition_inf[0] = pack->numSV;
 					addition_inf[1] = gps_fix;

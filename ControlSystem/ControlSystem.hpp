@@ -89,6 +89,8 @@ inline uint8_t UAV_MainMotorCount( uint8_t type )
 	float get_maxAccXY();
 	//获取降落速度
 	float get_LandVel();
+	//获取航点提前量
+	float get_WPRange();
 /*参数接口*/
 
 /*姿态控制*/
@@ -105,8 +107,10 @@ inline uint8_t UAV_MainMotorCount( uint8_t type )
 	bool Attitude_Control_Enable( double TIMEOUT = -1 );
 	bool Attitude_Control_Disable( double TIMEOUT = -1 );
 
-	//获取当前油门
+	//获取当前期望油门
 	bool get_Target_Throttle( double* result, double TIMEOUT = -1 );
+	//获取当前实际输出油门
+	bool get_OutputThrottle( double* result, double TIMEOUT = -1 );
 	//设定油门
 	bool Attitude_Control_set_Throttle( double thr, double TIMEOUT = -1 );
 	//获取目标Roll Pitch
@@ -136,6 +140,7 @@ inline uint8_t UAV_MainMotorCount( uint8_t type )
 		
 		//普通模式	
 		//Position_ControlMode_VelocityTrack = 16 ,	//速度控制跟踪模式
+		Position_ControlMode_ManualCircle = 15 ,	//2D绕圈模式
 		Position_ControlMode_Position = 12 ,	//位置锁定模式
 		Position_ControlMode_Velocity = 11 ,	//速度控制模式
 		Position_ControlMode_Locking = 10 ,	//刹车后锁位置
@@ -150,6 +155,12 @@ inline uint8_t UAV_MainMotorCount( uint8_t type )
 	#define Is_2DAutoMode(x) (x>=20 && x<=49)
 	#define Is_3DAutoMode(x) (x>=50 && x<=79)
 	#define Is_AutoMode(x) (x>=20 && x<=79)
+	#define Is_YawAutoMode(x) (x==15)
+	
+	//获取模式及期望位置速度
+	bool get_TargetPosInf( Position_ControlMode* pos_mode, Position_ControlMode* alt_mode, 
+													vector3<double>* t_pos, vector3<double>* t_vel,
+													double TIMEOUT=-1 );
 	
 	/*高度*/
 		//打开关闭高度控制器
@@ -207,6 +218,8 @@ inline uint8_t UAV_MainMotorCount( uint8_t type )
 		bool Position_Control_get_XYZAutoSpeed( double* AtVelXYZ, double TIMEOUT = -1 );
 		bool Position_Control_reset_XYZAutoSpeed( double TIMEOUT = -1 );
 		bool Position_Control_set_XYZAutoSpeed( double AtVelXYZ, double TIMEOUT = -1 );
+	
+		bool Position_Control_do_ManualCircleRelative( double dCircleVel, double dCircleR, double dCircleO, double TIMEOUT = -1 );
 	
 		/*飞直线*/
 			//飞到目标水平位置

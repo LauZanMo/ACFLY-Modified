@@ -113,6 +113,10 @@
 	{
 		return cfg.LandVel[0];
 	}
+	float get_WPRange()
+	{
+		return cfg.WPRange[0];
+	}
 /*参数接口*/
 	
 /*控制接口*/
@@ -133,6 +137,27 @@
 	static vector3<double> target_velocity;
 	static double VelCtrlMaxRoll = -1 , VelCtrlMaxPitch = -1;
 	static double VelCtrlMaxAcc = -1;
+	
+	//获取模式及期望位置速度
+	bool get_TargetPosInf( Position_ControlMode* pos_mode, Position_ControlMode* alt_mode, 
+													vector3<double>* t_pos, vector3<double>* t_vel,
+													double TIMEOUT )
+	{
+		if( LockCtrl(TIMEOUT) )
+		{
+			if(pos_mode)
+				*pos_mode = HorizontalPosition_ControlMode;
+			if(alt_mode)
+				*alt_mode = Altitude_ControlMode;
+			if(t_pos)
+				*t_pos = target_position;
+			if(t_vel)
+				*t_vel = target_velocity;
+			UnlockCtrl();
+			return true;
+		}
+		return false;
+	}
 	
 	/*高度*/
 		bool is_Altitude_Control_Enabled( bool* ena, double TIMEOUT )
@@ -216,6 +241,7 @@
 			return false;
 		}
 		
+		//获取飞行模式
 		bool get_Altitude_ControlMode( Position_ControlMode* mode, double TIMEOUT )
 		{
 			if( LockCtrl(TIMEOUT) )
@@ -526,6 +552,7 @@
 	/*高度*/
 		
 	/*水平位置*/
+		static double pos_vel = -1;
 		bool is_Position_Control_Enabled( bool* ena, double TIMEOUT )
 		{
 			if( LockCtrl(TIMEOUT) )
@@ -639,13 +666,6 @@
 					return false;
 				}	
 				
-				Quaternion attitude;
-				if( get_AirframeY_quat( &attitude, TIMEOUT ) == false )
-				{
-					UnlockCtrl();
-					return false;
-				}
-				
 				bool isMSafe = (xTaskGetCurrentTaskHandle()==MSafeTaskHandle);
 				if( !isMSafe && ForceMSafeCtrl )
 				{	//屏蔽用户控制
@@ -688,13 +708,6 @@
 					UnlockCtrl();
 					return false;
 				}	
-				
-				Quaternion attitude;
-				if( get_AirframeY_quat( &attitude, TIMEOUT ) == false )
-				{
-					UnlockCtrl();
-					return false;
-				}
 				
 				bool isMSafe = (xTaskGetCurrentTaskHandle()==MSafeTaskHandle);
 				if( !isMSafe && ForceMSafeCtrl )
@@ -775,6 +788,102 @@
 			return false;
 		}
 		
+		/*手动绕圈模式*/
+			static double ManualCircleVel = 0;
+			static double ManualCircleR = 500;
+			static vector2<double> ManualCircleOrigin;
+			bool Position_Control_do_ManualCircleRelative( double dCircleVel, double dCircleR, double dCircleO, double TIMEOUT )
+			{
+				if( isnan(dCircleVel) || isinf(dCircleVel) ||
+						isnan(dCircleR) || isinf(dCircleR) ||
+						isnan(dCircleO) || isinf(dCircleO)
+					)
+					return false;
+				
+				if( LockCtrl(TIMEOUT) )
+				{
+					if( Position_Control_Enabled == false )
+					{	//控制器未打开
+						UnlockCtrl();
+						return false;
+					}	
+					
+					bool isMSafe = (xTaskGetCurrentTaskHandle()==MSafeTaskHandle);
+					if( !isMSafe && ForceMSafeCtrl )
+					{	//屏蔽用户控制
+						last_XYCtrlTime = TIME::now();
+						UnlockCtrl();
+						return false;
+					}
+					
+					if( HorizontalPosition_ControlMode!=Position_ControlMode_Position && 
+							HorizontalPosition_ControlMode!=Position_ControlMode_ManualCircle )				
+					{	//未锁定位置先锁定
+						UnlockCtrl();
+						Position_Control_set_XYLock();
+						return false;
+					}		
+					
+					Quaternion attitude;
+					if( get_AirframeY_quat( &attitude, TIMEOUT ) == false )
+					{
+						UnlockCtrl();
+						return false;
+					}
+					
+					vector3<double> position;
+					if( get_Position_Ctrl( &position, TIMEOUT ) == false )
+					{
+						UnlockCtrl();
+						return false;
+					}
+					
+					if( HorizontalPosition_ControlMode!=Position_ControlMode_ManualCircle )
+					{	//初始进入模式
+						ManualCircleVel = 0;
+						ManualCircleR = 500;
+						
+						double yaw = attitude.getYaw();
+						double sin_Yaw, cos_Yaw;
+						fast_sin_cos( yaw, &sin_Yaw, &cos_Yaw );
+						ManualCircleOrigin.x = position.x + BodyHeading2ENU_x( ManualCircleR , 0 , sin_Yaw , cos_Yaw );
+						ManualCircleOrigin.y = position.y + BodyHeading2ENU_y( ManualCircleR , 0 , sin_Yaw , cos_Yaw );
+						
+						HorizontalPosition_ControlMode = Position_ControlMode_ManualCircle;
+					}									
+					
+					if( !is_zero(dCircleO) && ManualCircleR+dCircleO>=20 )
+					{	//移动圆心
+						vector2<double> RVec = vector2<double>(position.x,position.y) - ManualCircleOrigin;
+						double RVec_length = safe_sqrt(RVec.get_square());					
+						vector2<double> RVec_normed;
+						if( RVec_length > 0.1 )
+							RVec_normed = RVec * (1.0/RVec_length);
+						ManualCircleOrigin -= RVec_normed*dCircleO;
+						ManualCircleR += dCircleO;
+					}
+					//限制最大速度
+					ManualCircleVel += dCircleVel;
+					ManualCircleR += dCircleR;
+					if( ManualCircleR < 20 )
+						ManualCircleR = 20;
+					double max_vel = safe_sqrt(0.7*cfg.maxAccXY[0]*ManualCircleR);
+					if( max_vel > cfg.maxVelXY[0] )
+						max_vel = cfg.maxVelXY[0];
+					if( fabs(ManualCircleVel) > max_vel )
+						ManualCircleVel = sign(ManualCircleVel)*max_vel;
+
+					//更新控制时间
+					if(!isMSafe)
+						last_XYCtrlTime = TIME::now();
+				
+					UnlockCtrl();
+					return true;
+				}
+				return false;
+			}
+		/*手动绕圈模式*/
+		
 		
 		static double AutoVelXY = 500;
 		static double AutoVelXYZ = 500;
@@ -790,10 +899,10 @@
 			static double line_track_desired_maxacc = 300;
 			static uint16_t line_track_delay_counter = 0;
 			#define reset_line_track_state(maxv,maxacc,desired_vel) { line_track_delay_counter = 0;\
-																										line_track_desired = 0;\
-																										line_track_desired_vel = desired_vel;\
-																										line_track_desired_maxv = maxv;\
-																										line_track_desired_maxacc = maxacc; }
+																																line_track_desired = 0;\
+																																line_track_desired_vel = desired_vel;\
+																																line_track_desired_maxv = maxv;\
+																																line_track_desired_maxacc = maxacc; }
 		
 			bool Position_Control_set_TargetPositionXY( double posx, double posy, double vel, double TIMEOUT )
 			{
@@ -816,10 +925,15 @@
 						UnlockCtrl();
 						return false;
 					}
+					
+					vector3<double> position;
+					if( HorizontalPosition_ControlMode==Position_ControlMode_Position )
+						position = target_position;
+					else
+						get_Position_Ctrl(&position);
 					target_position.x = posx;
 					target_position.y = posy;
-					vector3<double> position;
-					get_Position_Ctrl(&position);
+					
 					//calculate vector B-A
 					route_line_A_B = position - target_position;
 					route_line_A_B.z = 0;
@@ -840,6 +954,7 @@
 							AutoVelXY = cfg.maxAutoVelXY[0];
 						
 						double vel_desired = -sqrtf(route_line_m) * (route_line_A_B*cVel);
+						vel_desired = 0;
 						reset_line_track_state(AutoVelXY,cfg.maxAutoAccXY[0],vel_desired)
 						//切换模式
 						HorizontalPosition_ControlMode = Position_ControlMode_RouteLine;
@@ -879,11 +994,16 @@
 						UnlockCtrl();
 						return false;
 					}
+					
+					vector3<double> position;
+					if( HorizontalPosition_ControlMode==Position_ControlMode_Position && Altitude_ControlMode==Position_ControlMode_Position )
+						position = target_position;
+					else
+						get_Position_Ctrl(&position);
 					target_position.x = posx;
 					target_position.y = posy;
 					target_position.z = posz;
-					vector3<double> position;
-					get_Position_Ctrl(&position);
+					
 					//calculate vector B-A
 					route_line_A_B = position - target_position;
 					double route_line_A_B_sq = route_line_A_B.get_square();
@@ -940,6 +1060,7 @@
 						/*速度限幅*/
 						
 						double vel_desired = -sqrtf(route_line_m) * (route_line_A_B*cVel);
+						vel_desired = 0;
 						reset_line_track_state(AutoVelXYZ,cfg.maxAutoAccXY[0],vel_desired)
 						//切换模式
 						HorizontalPosition_ControlMode = Altitude_ControlMode = Position_ControlMode_RouteLine3D;
@@ -962,8 +1083,7 @@
 				if( isnan(posx) || isinf(posx) ||
 						isnan(posy) || isinf(posy)	)
 					return false;
-				vector3<double> position;
-				get_Position_Ctrl(&position);
+				
 				vector3<double> cVel;
 				get_VelocityENU_Ctrl(&cVel);
 				if( LockCtrl(TIMEOUT) )
@@ -979,9 +1099,16 @@
 						last_XYCtrlTime = TIME::now();
 						UnlockCtrl();
 						return false;
-					}					
+					}
+					
+					vector3<double> position;
+					if( HorizontalPosition_ControlMode==Position_ControlMode_Position )
+						position = target_position;
+					else
+						get_Position_Ctrl(&position);
 					target_position.x = position.x + posx;
-					target_position.y = position.y + posy;				
+					target_position.y = position.y + posy;
+					
 					//calculate vector B-A
 					route_line_A_B = position - target_position;
 					route_line_A_B.z = 0;
@@ -1002,6 +1129,7 @@
 							AutoVelXY = cfg.maxAutoVelXY[0];
 						
 						double vel_desired = -sqrtf(route_line_m) * (route_line_A_B*cVel);
+						vel_desired = 0;
 						reset_line_track_state(AutoVelXY,cfg.maxAutoAccXY[0],vel_desired)
 						//切换模式
 						HorizontalPosition_ControlMode = Position_ControlMode_RouteLine;
@@ -1024,8 +1152,7 @@
 						isnan(posy) || isinf(posy) || 
 						isnan(posz) || isinf(posz) )
 					return false;
-				vector3<double> position;
-				get_Position_Ctrl(&position);
+				
 				vector3<double> cVel;
 				get_VelocityENU_Ctrl(&cVel);
 				if( LockCtrl(TIMEOUT) )
@@ -1041,10 +1168,17 @@
 						last_XYCtrlTime = last_ZCtrlTime = TIME::now();
 						UnlockCtrl();
 						return false;
-					}				
+					}
+					
+					vector3<double> position;
+					if( HorizontalPosition_ControlMode==Position_ControlMode_Position && Altitude_ControlMode==Position_ControlMode_Position )
+						position = target_position;
+					else
+						get_Position_Ctrl(&position);				
 					target_position.x = position.x + posx;
 					target_position.y = position.y + posy;
 					target_position.z = position.z + posz;
+					
 					//calculate vector B-A
 					route_line_A_B = position - target_position;
 					double route_line_A_B_sq = route_line_A_B.get_square();
@@ -1102,6 +1236,7 @@
 						
 						//切换模式
 						double vel_desired = -sqrtf(route_line_m) * (route_line_A_B*cVel);
+						vel_desired = 0;
 						reset_line_track_state(AutoVelXYZ,cfg.maxAutoAccXY[0],vel_desired)
 						HorizontalPosition_ControlMode = Altitude_ControlMode = Position_ControlMode_RouteLine3D;
 					}
@@ -1547,8 +1682,70 @@ void ctrl_Position()
 		
 		switch( HorizontalPosition_ControlMode )
 		{
+			case Position_ControlMode_ManualCircle:
+			{	//手动绕圈模式
+				if( inFlight )
+				{
+					//计算半径方向偏差
+					vector2<double> RVec = vector2<double>(Position.x,Position.y) - ManualCircleOrigin;
+					double RVec_length = safe_sqrt(RVec.get_square());					
+					vector2<double> RVec_normed;
+					if( RVec_length > 0.1 )
+						RVec_normed = RVec * (1.0/RVec_length);
+					double RErrVec_lengthErr = ManualCircleR - RVec_length;
+					vector2<double> RErrVec = RVec_normed * RErrVec_lengthErr;
+					
+					//计算e1导数
+					vector2<double> e1_1( VelocityENU.x, VelocityENU.y );
+					double e1r_1 = - (e1_1 * RVec_normed);
+					vector2<double> e1_2( TAcc.x, TAcc.y );
+					double e1r_2 = - (e1_2 * RVec_normed);
+					vector2<double> circleVel = e1_1 + RVec_normed*e1r_1;
+					/*半径方向*/
+						vector3<double> esAngularRate;
+						get_EsAngularRate(&esAngularRate);
+						smooth_kp_d2 d1r = smooth_kp_2( RErrVec_lengthErr, e1r_1, e1r_2 , Ps, AutoVelXY+100 );
+						vector2<double> T2r = RVec_normed*d1r.d0;
+						double CircleAcc = 0;
+						if( RVec_length > 0.1 )
+							CircleAcc = circleVel.get_square() * (1.0/RVec_length);
+						vector2<double> T2r_1 = RVec_normed*d1r.d1 - RVec_normed*CircleAcc;
+						vector2<double> T2r_2 = RVec_normed*d1r.d2;
+					/*半径方向*/
+						
+					//计算绕圆周速度
+					vector2<double> TargetCircleVel(-RVec_normed.y,RVec_normed.x);
+					TargetCircleVel *= ManualCircleVel;
+						
+					//控制偏航
+					Quaternion quat;
+					get_AirframeY_quat(&quat);
+					double currentYaw = quat.getYaw();
+					double yaw_err = atan2(-RVec.y,-RVec.x) - currentYaw;
+					yaw_err = Mod( yaw_err, 2*Pi );
+					if(yaw_err > Pi)
+						yaw_err -= 2*Pi;
+					while(yaw_err < -Pi)
+						yaw_err += 2*Pi;
+					double target_yaw_rate = 0;
+					if( RVec_length > 0.1 )
+						target_yaw_rate = (RVec_normed.x*VelocityENU.y - RVec_normed.y*VelocityENU.x) * (1.0/RVec_length);
+					Attitude_Control_set_Target_YawRate( yaw_err*1.0 + target_yaw_rate );
+						
+					TargetVelocity.x = T2r.x+TargetCircleVel.x;	TargetVelocity.y = T2r.y+TargetCircleVel.y;
+					TargetVelocity_1.x = T2r_1.x;	TargetVelocity_1.y = T2r_1.y;
+					TargetVelocity_2.x = T2r_2.x;	TargetVelocity_2.y = T2r_2.y;
+				}
+				else
+				{	//没起飞前在绕圈模式
+					//回到position模式
+					HorizontalPosition_ControlMode = Position_ControlMode_Position;
+				}
+				break;
+			}
+			
 			case Position_ControlMode_Position:
-			{
+			{	//悬停模式
 				if( inFlight )
 				{
 					vector2<double> e1;
@@ -1572,7 +1769,12 @@ void ctrl_Position()
 					else
 						e_2 = 0;
 					
-					smooth_kp_d2 d1 = smooth_kp_2( e1_length, e_1, e_2 , Ps, 200 );
+					double _pos_vel = 200;
+					if( e1_length < 100 )
+						pos_vel = -1;
+					if( pos_vel > 0 )
+						_pos_vel = pos_vel;					
+					smooth_kp_d2 d1 = smooth_kp_2( e1_length, e_1, e_2 , Ps, _pos_vel );
 					vector2<double> T2;
 					vector2<double> T2_1;
 					vector2<double> T2_2;
@@ -1590,8 +1792,7 @@ void ctrl_Position()
 					TargetVelocity_2.x = T2_2.x;	TargetVelocity_2.y = T2_2.y;
 				}
 				else
-				{
-					//没起飞前在位置控制模式
+				{	//没起飞前在位置控制模式
 					//重置期望位置
 					target_position.x = Position.x;
 					target_position.y = Position.y;
@@ -1601,7 +1802,7 @@ void ctrl_Position()
 				break;
 			}		
 			case Position_ControlMode_Velocity:
-			{
+			{	//速度控制模式
 				if( !inFlight )
 				{
 					//没起飞时重置期望速度
@@ -1695,6 +1896,7 @@ void ctrl_Position()
 					vector2<double> A_desired = A;
 					double A_B_length = safe_sqrt(A_B.get_square());		
 					double line_track_desired_acc = 0;
+					double comp_desired_vel = line_track_desired_vel;		
 					if( A_B_length > 0.1 )
 					{						
 						if( 0.5*line_track_desired_vel*line_track_desired_vel/line_track_desired_maxacc >= A_B_length - line_track_desired )
@@ -1718,8 +1920,39 @@ void ctrl_Position()
 						if( line_track_desired > A_B_length )
 							line_track_desired = A_B_length;
 						
+						double comp_desired_s = line_track_desired;
+						if( cfg.WPRange[0] > 0 )
+						{	//提前到点
+							double mv = safe_sqrt(2*line_track_desired_maxacc*cfg.WPRange[0]);
+							if( mv > line_track_desired_maxv )
+								mv = line_track_desired_maxv;
+							
+							//修正期望速度
+							double s_rm = A_B_length - line_track_desired;
+							s_rm -= cfg.WPRange[0];
+							if( s_rm > 0 )
+							{
+								double vel_dec = constrain( mv - s_rm, 0.0, mv );
+								if( comp_desired_vel > vel_dec )
+									comp_desired_vel -= vel_dec;
+								else
+									comp_desired_vel = 0;
+							}
+							else
+								comp_desired_vel = 0;
+							
+							//修正期望位置
+							if( s_rm > 0 )
+							{
+								double s_inc = constrain( cfg.WPRange[0] - s_rm, 0.0, (double)cfg.WPRange[0] );
+								comp_desired_s += s_inc;
+							}
+							else
+								comp_desired_s = A_B_length;
+						}
+						
 						vector2<double> B = A + A_B;
-						A_desired = B - A_B*(line_track_desired/A_B_length);
+						A_desired = B - A_B*(comp_desired_s/A_B_length);
 					}
 					
 					//计算偏差
@@ -1738,13 +1971,17 @@ void ctrl_Position()
 					if( e1d_length > 0.001 )
 						d_n = e1d * (1.0/e1d_length);
 					
+					double route_sign = 1.0;
+					if( route_n*vector2<double>(route_line_A_B.x,route_line_A_B.y) > 0 )
+						route_sign = -1.0;
+					
 					//计算e1导数
 					vector2<double> e1_1( VelocityENU.x, VelocityENU.y );
-					double e1r_1 = line_track_desired_vel - (e1_1 * route_n);
+					double e1r_1 = route_sign*comp_desired_vel - (e1_1 * route_n);
 					double e1d_1 = -(e1_1 * d_n);
 					//e1二阶导
 					vector2<double> e1_2( TAcc.x, TAcc.y );
-					double e1r_2 = line_track_desired_acc - (e1_2 * route_n);
+					double e1r_2 = route_sign*line_track_desired_acc - (e1_2 * route_n);
 					double e1d_2 = -(e1_2 * d_n);
 					
 					/*route方向*/
@@ -1766,11 +2003,20 @@ void ctrl_Position()
 					TargetVelocity_2.x = T2r_2.x+T2d_2.x;	TargetVelocity_2.y = T2r_2.y+T2d_2.y;
 						
 					//判断到点
-					if( e1r.get_square() + e1d.get_square() < cfg.WPRange[0]*cfg.WPRange[0] && 
-							A_B_length - line_track_desired < 1 ) 
+					double wp_range = 0;
+					if( cfg.WPRange[0] > 0 )
+						wp_range = cfg.WPRange[0];
+					if( wp_range < 0.1 )
+						wp_range = 0.1;
+					if( safe_sqrt( e1r.get_square() + e1d.get_square() ) < wp_range+80 && 
+							A_B_length - line_track_desired <= wp_range ) 
 					{
+						double wp_delay = 0;
+						if( cfg.WPRange[0] < 0 )
+							wp_delay = -cfg.WPRange[0];
+						
 						++line_track_delay_counter;
-						if( line_track_delay_counter >= 1*CtrlRateHz )
+						if( line_track_delay_counter >= wp_delay*CtrlRateHz )
 							HorizontalPosition_ControlMode = Position_ControlMode_Position;
 					}
 					else
@@ -1797,7 +2043,8 @@ void ctrl_Position()
 					//计算跟踪A点位置
 					vector3<double> A_desired = target_position;
 					double A_B_length = safe_sqrt(route_line_A_B.get_square());	
-					double line_track_desired_acc = 0;					
+					double line_track_desired_acc = 0;		
+					double comp_desired_vel = line_track_desired_vel;					
 					if( A_B_length > 0.1 )
 					{
 						if( 0.5*line_track_desired_vel*line_track_desired_vel/line_track_desired_maxacc >= A_B_length - line_track_desired )
@@ -1820,9 +2067,39 @@ void ctrl_Position()
 						line_track_desired += line_track_desired_vel*h;
 						if( line_track_desired > A_B_length )
 							line_track_desired = A_B_length;
-						
+																	
+						double comp_desired_s = line_track_desired;
+						if( cfg.WPRange[0] > 0 )
+						{	//提前到点
+							double mv = safe_sqrt(2*line_track_desired_maxacc*cfg.WPRange[0]);
+							if( mv > line_track_desired_maxv )
+								mv = line_track_desired_maxv;
+							
+							//修正期望速度
+							double s_rm = A_B_length - line_track_desired;
+							s_rm -= cfg.WPRange[0];
+							if( s_rm > 0 )
+							{
+								double vel_dec = constrain( mv - s_rm, 0.0, mv );
+								if( comp_desired_vel > vel_dec )
+									comp_desired_vel -= vel_dec;
+								else
+									comp_desired_vel = 0;
+							}
+							else
+								comp_desired_vel = 0;
+							
+							//修正期望位置
+							if( s_rm > 0 )
+							{
+								double s_inc = constrain( cfg.WPRange[0] - s_rm, 0.0, (double)cfg.WPRange[0] );
+								comp_desired_s += s_inc;
+							}
+							else
+								comp_desired_s = A_B_length;
+						}
 						vector3<double> B = target_position + route_line_A_B;
-						A_desired = B - route_line_A_B*(line_track_desired/A_B_length);
+						A_desired = B - route_line_A_B*(comp_desired_s/A_B_length);
 					}
 					
 					//计算偏差
@@ -1835,18 +2112,22 @@ void ctrl_Position()
 					vector3<double> route_n;
 					if( e1r_length > 0.001 )
 						route_n = e1r * (1.0/e1r_length);
+
+					double route_sign = 1.0;
+					if( route_n*route_line_A_B > 0 )
+						route_sign = -1.0;
 					
 					//计算e1导数
 					double e1r_1_length = -(VelocityENU * route_n);	
 					vector3<double> e1r_1 = route_n * e1r_1_length;					
 					vector3<double> e1d_1 = -(VelocityENU + e1r_1);
-					e1r_1_length += line_track_desired_vel;
+					e1r_1_length += route_sign*comp_desired_vel;
 					//e1二阶导
 					vector3<double> e1_2( TAcc.x, TAcc.y, AccelerationENU.z );
 					double e1r_2_length = -(e1_2 * route_n);
 					vector3<double> e1r_2 = route_n * e1r_2_length;					
 					vector3<double> e1d_2 = -(e1_2 + e1r_2);
-					e1r_2_length += line_track_desired_acc;
+					e1r_2_length += route_sign*line_track_desired_acc;
 					
 					/*route方向*/
 						smooth_kp_d2 d1r = smooth_kp_2( e1r_length, e1r_1_length, e1r_2_length , Ps, AutoVelXYZ+100 );
@@ -1854,7 +2135,7 @@ void ctrl_Position()
 						vector3<double> T2r_1 = route_n * d1r.d1;
 						vector3<double> T2r_2 = route_n * d1r.d2;
 					/*route方向*/
-					
+
 					/*d方向*/
 						e_1_n = e1d.x*e1d_1.x + e1d.y*e1d_1.y + e1d.z*e1d_1.z;
 						if( !is_zero(e1d_length) )
@@ -1886,11 +2167,21 @@ void ctrl_Position()
 					TargetVelocity_2 = T2r_2 + T2d_2;
 						
 					//判断到点
-					if( e1r.get_square() + e1d.get_square() < cfg.WPRange[0]*cfg.WPRange[0] && 
-							A_B_length - line_track_desired < 1.0 ) 
+					pos_vel = AutoVelXYZ;
+					double wp_range = 0;
+					if( cfg.WPRange[0] > 0 )
+						wp_range = cfg.WPRange[0];
+					if( wp_range < 0.1 )
+						wp_range = 0.1;
+					if( safe_sqrt( e1r.get_square() + e1d.get_square() ) < wp_range+80 && 
+							A_B_length - line_track_desired <= wp_range ) 
 					{
+						double wp_delay = 0;
+						if( cfg.WPRange[0] < 0 )
+							wp_delay = -cfg.WPRange[0];
+						
 						++line_track_delay_counter;
-						if( line_track_delay_counter >= 1*CtrlRateHz )
+						if( line_track_delay_counter >= wp_delay*CtrlRateHz )
 							HorizontalPosition_ControlMode = Altitude_ControlMode = Position_ControlMode_Position;
 					}
 					else
@@ -1962,9 +2253,7 @@ void ctrl_Position()
 		else
 			e_1 = 0;
 		smooth_kp_d1 d2;
-		if( Is_AutoMode(HorizontalPosition_ControlMode) )
-			d2 = smooth_kp_1( e2_length, e_1 , Pv, cfg.maxAutoAccXY[0] );
-		else if( HorizontalPosition_ControlMode==Position_ControlMode_Locking && XYLock_maxAcc>50 )
+		if( HorizontalPosition_ControlMode==Position_ControlMode_Locking && XYLock_maxAcc>50 )
 			d2 = smooth_kp_1( e2_length, e_1 , Pv, XYLock_maxAcc );
 		else
 			d2 = smooth_kp_1( e2_length, e_1 , Pv, cfg.maxAccXY[0] );
@@ -2152,10 +2441,10 @@ PosCtrl_Finish:
 						else
 							Target_tracker[2].r2n = Target_tracker[2].r2p = AutoVelZUp;
 						Target_tracker[2].track4( target_position.z , 1.0 / CtrlRateHz );
-						if( fabs( Target_tracker[2].x1 - target_position.z ) < 0.1 && \
-								fabs( target_position.z - Position.z ) < cfg.WPRange[0] && \
-								in_symmetry_range( Target_tracker[2].x2 , 0.1 ) && \
-								in_symmetry_range( Target_tracker[2].x3 , 0.1 )	)
+						if( fabs( Target_tracker[2].x1 - target_position.z ) < 0.7 && \
+								fabs( target_position.z - Position.z ) < 50 && \
+								in_symmetry_range( Target_tracker[2].x2 , 0.7 ) && \
+								in_symmetry_range( Target_tracker[2].x3 , 0.7 )	)
 							Altitude_ControlMode = Position_ControlMode_Position;
 					}
 					else
@@ -2184,10 +2473,10 @@ PosCtrl_Finish:
 						Target_tracker[2].r2n = AutoVelZUp;
 						Target_tracker[2].r2p = AutoVelZDown;
 						Target_tracker[2].track4( target_position.z , 1.0f / CtrlRateHz );
-						if( fabs( Target_tracker[2].x1 - target_position.z ) < 0.1 && \
-								fabs( target_position.z - Position.z ) < cfg.WPRange[0] && \
-								in_symmetry_range( Target_tracker[2].x2 , 0.1 ) && \
-								in_symmetry_range( Target_tracker[2].x3 , 0.1 )	)
+						if( fabs( Target_tracker[2].x1 - target_position.z ) < 0.7 && \
+								fabs( target_position.z - Position.z ) < 50 && \
+								in_symmetry_range( Target_tracker[2].x2 , 0.7 ) && \
+								in_symmetry_range( Target_tracker[2].x3 , 0.7 )	)
 							Altitude_ControlMode = Position_ControlMode_Position;
 					}
 					else
@@ -2209,9 +2498,9 @@ PosCtrl_Finish:
 					{
 						Target_tracker[2].track3( 0 , 1.0 / CtrlRateHz );
 						if( in_symmetry_range( VelocityENU.z , 10.0 ) && \
-								in_symmetry_range( Target_tracker[2].x2 , 0.1 ) && \
-								in_symmetry_range( Target_tracker[2].x3 , 0.1 ) && \
-								in_symmetry_range( Target_tracker[2].x4 , 0.1 )	)
+								in_symmetry_range( Target_tracker[2].x2 , 0.3 ) && \
+								in_symmetry_range( Target_tracker[2].x3 , 0.3 ) && \
+								in_symmetry_range( Target_tracker[2].x4 , 0.3 )	)
 						{
 							target_position.z = Target_tracker[2].x1 = Position.z;
 							Altitude_ControlMode = Position_ControlMode_Position;
@@ -2332,7 +2621,7 @@ PosCtrl_Finish:
 			//没起飞
 			//均匀增加油门起飞
 			double throttle;
-			get_Target_Throttle(&throttle);
+			get_OutputThrottle(&throttle);
 			ThrOut_Filters[2].reset(throttle);
 			Attitude_Control_set_Throttle( throttle + h * 35 );
 		}
@@ -2423,7 +2712,7 @@ void init_Ctrl_Position()
 		initial_cfg.maxAutoJerkDown[0] = 800;
 		
 		//到达目标点范围
-		initial_cfg.WPRange[0] = 80;
+		initial_cfg.WPRange[0] = -1;
 		//降落速度
 		initial_cfg.LandVel[0] = 50;
 	/*初始化参数*/
@@ -2573,5 +2862,5 @@ void init_Ctrl_Position()
 	ThrOut_Filters[1].set_cutoff_frequency( CtrlRateHz, 20 );
 	ThrOut_Filters[2].set_cutoff_frequency( CtrlRateHz, 20 );
 	
-	ParamGroupRegister( "PosCtrl", 3, 33, param_types, param_names, (uint64_t*)&initial_cfg );
+	ParamGroupRegister( "PosCtrl", 5, sizeof(cfg)/8, param_types, param_names, (uint64_t*)&initial_cfg );
 }

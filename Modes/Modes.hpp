@@ -72,6 +72,7 @@ enum AFunc
 	AFunc_Stabilize = 0,
 	AFunc_AltHold = 1,
 	AFunc_PosHold = 2,
+	AFunc_ManualCircle = 5,
 	
 	AFunc_TakeOff = 20,
 	AFunc_Mission = 22,

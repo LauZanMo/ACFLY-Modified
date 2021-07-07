@@ -8,6 +8,7 @@
 #include <stdbool.h>
 #include "AC_Math.hpp"
 #include "Filters_LP.hpp"
+#include "TD4.hpp"
 
 class ESO_h
 {
@@ -23,7 +24,7 @@ class ESO_h
 		double z1;
 		double z2;
 		double u;
-		Filter_Butter2_LP b_filter;
+		TD4_Lite b_filter;
 	
 		//输出->加速度增益
 		double b;		
@@ -38,13 +39,12 @@ class ESO_h
 		{			
 			this->T = T;
 			this->invT = 1.0f / T;
-			this->beta = beta;
+			this->beta = beta*10;
 			this->z1 = this->u = 0;
 			this->z2 =1.0f;
 			
 			this->Hz = Hz;
 			this->h = 1.0 / Hz;
-			b_filter.set_cutoff_frequency( Hz, beta );
 		}
 		ESO_h()
 		{

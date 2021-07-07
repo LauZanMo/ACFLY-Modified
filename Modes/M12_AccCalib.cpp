@@ -41,7 +41,7 @@ M12_AccCalib::M12_AccCalib():Mode_Base( "AccCalib", 12 )
 
 static void get_F_dF( double F_matrix[6], double dF_matrix[36], double* es,  double* p );
 
-#define Stable_Time 100
+#define Stable_Time 300
 #define Calibration_Time 2000
 
 ModeResult M12_AccCalib::main_func( void* param1, uint32_t param2 )

@@ -19,9 +19,34 @@ struct AuxFuncsConfig
 	uint8_t Aux6Func[8];
 	uint8_t Aux7Func[8];
 	uint8_t Aux8Func[8];
+	float Aux1Param1[2];
+	float Aux2Param1[2];
+	float Aux3Param1[2];
+	float Aux4Param1[2];
+	float Aux5Param1[2];
+	float Aux6Param1[2];
+	float Aux7Param1[2];
+	float Aux8Param1[2];
+	float Aux1Param2[2];
+	float Aux2Param2[2];
+	float Aux3Param2[2];
+	float Aux4Param2[2];
+	float Aux5Param2[2];
+	float Aux6Param2[2];
+	float Aux7Param2[2];
+	float Aux8Param2[2];
 	uint16_t Aux_CamOnPwm[4];
 	uint16_t Aux_CamOffPwm[4];
 	float Aux_CamShTime[2];
+	uint16_t Aux_BsYTPit0[4];
+	uint16_t Aux_BsYTPit90[4];
+	uint16_t Aux_StYTPit0[4];
+	uint16_t Aux_StYTPit90[4];
+	uint16_t Aux_StYTRolN45[4];
+	uint16_t Aux_StYTRolP45[4];
+	float Aux_YTPitMin[2];
+	float Aux_YTPitMax[2];
+	float Aux_YTRollMax[2];
 };
 
 //初始化Aux处理

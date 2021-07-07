@@ -12,7 +12,7 @@
 //保存之前通道值用于触发
 static double last_Channel_values[16];
 //云台是否自动控制
-static bool GimbalCtrl_atLocked[16];
+static float GimbalCtrl_LockedAtt[16];
 
 //拍照次数
 static uint16_t PhotoCnt = 0;
@@ -189,7 +189,7 @@ void init_process_AuxFuncs()
 	}
 	//复位运动自动控制标志
 	for( uint8_t i = 0; i < 16; ++i )
-		GimbalCtrl_atLocked[i] = false;
+		GimbalCtrl_LockedAtt[i] = 20000;
 }
 
 static SemaphoreHandle_t CamMutex = xSemaphoreCreateRecursiveMutex();
@@ -284,14 +284,16 @@ void process_AuxFuncs(const Receiver* rc)
 	{
 		for( uint8_t i = MainMotorCount; i < PWMChannelsCount; ++i )
 		{
-			uint8_t aux_cfg = ((uint8_t*)&aux_configs)[i*8];
+			uint8_t aux_cfg = ((uint8_t*)&aux_configs.Aux1Func)[i*8];
+			float aux_param1 = ((float*)&aux_configs.Aux1Param1)[i*2];
+			float aux_param2 = ((float*)&aux_configs.Aux1Param2)[i*2];
 			if( aux_cfg>=1 && aux_cfg<=16 )
 			{	//映射遥控器通道
 				if( rc->available )
 				{
 					uint8_t ref_chan = aux_cfg - 1;
 					if( rc->raw_available_channels > ref_chan )
-						Aux_PWM_Out( rc->raw_data[ref_chan], i );
+						Aux_PWM_Out( (rc->raw_data[ref_chan]-50.0)*aux_param1+50+aux_param2*0.1, i );
 				}
 			}
 			else if( aux_cfg>=25 && aux_cfg<=48 )
@@ -319,28 +321,123 @@ void process_AuxFuncs(const Receiver* rc)
 					Aux_PWM_Out( aux_configs.Aux_CamOffPwm[0]*0.1-100, i );
 			}
 			else if( aux_cfg>=49 && aux_cfg<=72 )
-			{	//用遥控器对应通道进行云台控制（raw_data）
+			{	//用遥控器对应通道进行无刷云台俯仰控制（raw_data）
+				double angle90 = (aux_configs.Aux_BsYTPit90[0]-1000)*0.1;
+				double angle0 = (aux_configs.Aux_BsYTPit0[0]-1000)*0.1;
+				double scale = (angle90 - angle0)/90.0;
+				if( GimbalCtrl_LockedAtt[i] < 200 )
+					Aux_PWM_Out( (GimbalCtrl_LockedAtt[i]-0)*scale + angle0, i );
+				
 				if( rc->available )
-				{
+				{					
 					uint8_t ref_chan = aux_cfg - 49;
 					if( rc->raw_available_channels > ref_chan )
 					{
-						if( GimbalCtrl_atLocked[i] )
+						if( fabs(GimbalCtrl_LockedAtt[i]) < 200 )
 						{	//云台自动控制
 							//通道变化大于阈值才调整云台
 							if( fabs(rc->raw_data[ref_chan] - last_Channel_values[ref_chan]) > 10 )
 							{
-								Aux_PWM_Out( rc->raw_data[ref_chan], i );
+								float angle = (rc->raw_data[ref_chan]-50.0)*(60.0/50.0)*aux_param1 + 45+aux_param2; 
+								angle = constrain( angle, aux_configs.Aux_YTPitMin[0], aux_configs.Aux_YTPitMax[0] );
+								Aux_PWM_Out( (angle-0)*scale + angle0, i );
 								last_Channel_values[ref_chan] = rc->raw_data[ref_chan];
-								GimbalCtrl_atLocked[i] = false;
+								GimbalCtrl_LockedAtt[i] = 200000;
 							}
 						}
 						else
 						{	//云台手动控制
-							Aux_PWM_Out( rc->raw_data[ref_chan], i );
+							float angle = (rc->raw_data[ref_chan]-50.0)*(60.0/50.0)*aux_param1 + 45+aux_param2; 
+							angle = constrain( angle, aux_configs.Aux_YTPitMin[0], aux_configs.Aux_YTPitMax[0] );
+							Aux_PWM_Out( (angle-0)*scale + angle0, i );
 							last_Channel_values[ref_chan] = rc->raw_data[ref_chan];
 						}
 					}
+				}
+			}
+			else if( aux_cfg>=73 && aux_cfg<=96 )
+			{	//用遥控器对应通道进行舵机云台俯仰控制（raw_data）
+				double angle90 = (aux_configs.Aux_StYTPit90[0]-1000)*0.1;
+				double angle0 = (aux_configs.Aux_StYTPit0[0]-1000)*0.1;
+				double scale = (angle90 - angle0)/90.0;
+				Quaternion quat;
+				get_Airframe_quat(&quat);
+				double pitch = rad2degree(quat.getPitch());
+				if( GimbalCtrl_LockedAtt[i] < 200 )
+					Aux_PWM_Out( (GimbalCtrl_LockedAtt[i]-pitch-0)*scale + angle0, i );
+				
+				uint8_t ref_chan = aux_cfg - 73;
+				if( rc->available && rc->raw_available_channels>ref_chan )
+				{
+					if( fabs(GimbalCtrl_LockedAtt[i]) < 200 )
+					{	//云台自动控制
+						//通道变化大于阈值才调整云台
+						if( fabs(rc->raw_data[ref_chan] - last_Channel_values[ref_chan]) > 10 )
+						{
+							float angle = (rc->raw_data[ref_chan]-50.0)*(60.0/50.0)*aux_param1 + 45+aux_param2; 							
+							angle -= pitch;
+							angle = constrain( angle, aux_configs.Aux_YTPitMin[0], aux_configs.Aux_YTPitMax[0] );
+							Aux_PWM_Out( (angle-0)*scale + angle0, i );
+							last_Channel_values[ref_chan] = rc->raw_data[ref_chan];
+							GimbalCtrl_LockedAtt[i] = 20000;
+						}
+					}
+					else
+					{	//云台手动控制
+						float angle = (rc->raw_data[ref_chan]-50.0)*(60.0/50.0)*aux_param1 + 45+aux_param2; 
+						angle -= pitch;
+						angle = constrain( angle, aux_configs.Aux_YTPitMin[0], aux_configs.Aux_YTPitMax[0] );
+						Aux_PWM_Out( (angle-0)*scale + angle0, i );
+						last_Channel_values[ref_chan] = rc->raw_data[ref_chan];
+					}
+				}
+				else
+				{
+					float angle = 0;
+					Aux_PWM_Out( (angle-pitch-0)*scale + angle0, i );
+				}
+			}
+			else if( aux_cfg>=97 && aux_cfg<=120 )
+			{	//用遥控器对应通道进行舵机云台横滚控制（raw_data）
+				double angleN45 = (aux_configs.Aux_StYTRolN45[0]-1000)*0.1;
+				double angleP45 = (aux_configs.Aux_StYTRolP45[0]-1000)*0.1;
+				double angle0 = (angleN45 + angleP45) / 2;
+				double scale = (angleP45 - angle0)/45.0;
+				Quaternion quat;
+				get_Airframe_quat(&quat);
+				double roll = rad2degree(quat.getRoll());
+				if( GimbalCtrl_LockedAtt[i] < 200 )
+					Aux_PWM_Out( (GimbalCtrl_LockedAtt[i]-roll-0)*scale + angleN45, i );
+				
+				uint8_t ref_chan = aux_cfg - 97;
+				if( rc->available && rc->raw_available_channels>ref_chan )
+				{
+					if( fabs(GimbalCtrl_LockedAtt[i]) < 200 )
+					{	//云台自动控制
+						//通道变化大于阈值才调整云台
+						if( fabs(rc->raw_data[ref_chan] - last_Channel_values[ref_chan]) > 10 )
+						{
+							float angle = (rc->raw_data[ref_chan]-50.0)*(45.0/50.0)*aux_param1 + aux_param2; 
+							angle -= roll;
+							angle = constrain( angle, aux_configs.Aux_YTRollMax[0] );
+							Aux_PWM_Out( (angle-0)*scale + angle0, i );
+							last_Channel_values[ref_chan] = rc->raw_data[ref_chan];
+							GimbalCtrl_LockedAtt[i] = 20000;
+						}
+					}
+					else
+					{	//云台手动控制
+						float angle = (rc->raw_data[ref_chan]-50.0)*(45.0/50.0)*aux_param1 + aux_param2; 
+						angle -= roll;
+						angle = constrain( angle, aux_configs.Aux_YTRollMax[0] );
+						Aux_PWM_Out( (angle-0)*scale + angle0, i );
+						last_Channel_values[ref_chan] = rc->raw_data[ref_chan];
+					}
+				}
+				else
+				{
+					float angle = 0;
+					Aux_PWM_Out( (angle-roll-0)*scale + angle0, i );
 				}
 			}
 		}
@@ -359,9 +456,19 @@ bool AuxGimbalSetAngle( double angle )
 	{
 		uint8_t aux_cfg = ((uint8_t*)&aux_configs)[i*8];
 		if( aux_cfg>=49 && aux_cfg<=72 )
-		{
-			Aux_PWM_Out( angle*100/90, i );
-			GimbalCtrl_atLocked[i] = true;
+		{	//无刷云台俯仰角
+			angle = constrain( angle, (double)aux_configs.Aux_YTPitMin[0], (double)aux_configs.Aux_YTPitMax[0] );
+			GimbalCtrl_LockedAtt[i] = angle;
+		}
+		else if( aux_cfg>=73 && aux_cfg<=96 )
+		{	//无刷云台俯仰角
+			angle = constrain( angle, (double)aux_configs.Aux_YTPitMin[0], (double)aux_configs.Aux_YTPitMax[0] );
+			GimbalCtrl_LockedAtt[i] = angle;
+		}
+		else if( aux_cfg>=97 && aux_cfg<=120 )
+		{	//无刷云台俯仰角
+			angle = constrain( angle, (double)aux_configs.Aux_YTRollMax[0] );
+			GimbalCtrl_LockedAtt[i] = angle;
 		}
 	}
 	return true;
@@ -379,9 +486,34 @@ void init_AuxFuncs()
 	initial_cfg.Aux6Func[0] = 0;
 	initial_cfg.Aux7Func[0] = 0;
 	initial_cfg.Aux8Func[0] = 0;
+	initial_cfg.Aux1Param1[0] = 1;
+	initial_cfg.Aux2Param1[0] = 1;
+	initial_cfg.Aux3Param1[0] = 1;
+	initial_cfg.Aux4Param1[0] = 1;
+	initial_cfg.Aux5Param1[0] = 1;
+	initial_cfg.Aux6Param1[0] = 1;
+	initial_cfg.Aux7Param1[0] = 1;
+	initial_cfg.Aux8Param1[0] = 1;
+	initial_cfg.Aux1Param2[0] = 0;
+	initial_cfg.Aux2Param2[0] = 0;
+	initial_cfg.Aux3Param2[0] = 0;
+	initial_cfg.Aux4Param2[0] = 0;
+	initial_cfg.Aux5Param2[0] = 0;
+	initial_cfg.Aux6Param2[0] = 0;
+	initial_cfg.Aux7Param2[0] = 0;
+	initial_cfg.Aux8Param2[0] = 0;
 	initial_cfg.Aux_CamOnPwm[0] = 2000;
 	initial_cfg.Aux_CamOffPwm[0] = 1000;
 	initial_cfg.Aux_CamShTime[0] = 0.1;
+	initial_cfg.Aux_BsYTPit0[0] = 1000;
+	initial_cfg.Aux_BsYTPit90[0] = 2000;
+	initial_cfg.Aux_StYTPit0[0] = 1250;
+	initial_cfg.Aux_StYTPit90[0] = 1750;
+	initial_cfg.Aux_StYTRolN45[0] = 1000;
+	initial_cfg.Aux_StYTRolP45[0] = 2000;
+	initial_cfg.Aux_YTPitMin[0] = -20;
+	initial_cfg.Aux_YTPitMax[0] = 120;
+	initial_cfg.Aux_YTRollMax[0] = 45;
 	MAV_PARAM_TYPE param_types[] = {
 		MAV_PARAM_TYPE_UINT8 ,
 		MAV_PARAM_TYPE_UINT8 ,
@@ -391,8 +523,33 @@ void init_AuxFuncs()
 		MAV_PARAM_TYPE_UINT8 ,
 		MAV_PARAM_TYPE_UINT8 ,
 		MAV_PARAM_TYPE_UINT8 ,
+		MAV_PARAM_TYPE_REAL32 ,
+		MAV_PARAM_TYPE_REAL32 ,
+		MAV_PARAM_TYPE_REAL32 ,
+		MAV_PARAM_TYPE_REAL32 ,
+		MAV_PARAM_TYPE_REAL32 ,
+		MAV_PARAM_TYPE_REAL32 ,
+		MAV_PARAM_TYPE_REAL32 ,
+		MAV_PARAM_TYPE_REAL32 ,
+		MAV_PARAM_TYPE_REAL32 ,
+		MAV_PARAM_TYPE_REAL32 ,
+		MAV_PARAM_TYPE_REAL32 ,
+		MAV_PARAM_TYPE_REAL32 ,
+		MAV_PARAM_TYPE_REAL32 ,
+		MAV_PARAM_TYPE_REAL32 ,
+		MAV_PARAM_TYPE_REAL32 ,
+		MAV_PARAM_TYPE_REAL32 ,
 		MAV_PARAM_TYPE_UINT16 ,
 		MAV_PARAM_TYPE_UINT16 ,
+		MAV_PARAM_TYPE_REAL32 ,
+		MAV_PARAM_TYPE_UINT16 ,
+		MAV_PARAM_TYPE_UINT16 ,
+		MAV_PARAM_TYPE_UINT16 ,
+		MAV_PARAM_TYPE_UINT16 ,
+		MAV_PARAM_TYPE_UINT16 ,
+		MAV_PARAM_TYPE_UINT16 ,
+		MAV_PARAM_TYPE_REAL32 ,
+		MAV_PARAM_TYPE_REAL32 ,
 		MAV_PARAM_TYPE_REAL32 ,
 	};
 	SName param_names[] = {
@@ -404,9 +561,34 @@ void init_AuxFuncs()
 		"Aux_6Func" ,
 		"Aux_7Func" ,
 		"Aux_8Func" ,
+		"Aux_1Param1" ,
+		"Aux_2Param1" ,
+		"Aux_3Param1" ,
+		"Aux_4Param1" ,
+		"Aux_5Param1" ,
+		"Aux_6Param1" ,
+		"Aux_7Param1" ,
+		"Aux_8Param1" ,
+		"Aux_1Param2" ,
+		"Aux_2Param2" ,
+		"Aux_3Param2" ,
+		"Aux_4Param2" ,
+		"Aux_5Param2" ,
+		"Aux_6Param2" ,
+		"Aux_7Param2" ,
+		"Aux_8Param2" ,
 		"Aux_CamOnPwm" ,
 		"Aux_CamOffPwm" ,
 		"Aux_CamShTime" ,
+		"Aux_BsYTPit0" ,
+		"Aux_BsYTPit90" ,
+		"Aux_StYTPit0" ,
+		"Aux_StYTPit90" ,
+		"Aux_StYTRol-45" ,
+		"Aux_StYTRol+45" ,
+		"Aux_StPitMin" ,
+		"Aux_StPitMax" ,
+		"Aux_StRolMax" ,
 	};
 	ParamGroupRegister( "AuxCfg", 1,sizeof(initial_cfg)/8, param_types, param_names, (uint64_t*)&initial_cfg );
 }

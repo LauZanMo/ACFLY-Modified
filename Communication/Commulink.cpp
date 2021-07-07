@@ -405,6 +405,7 @@ using namespace std;
 		SetMsgRate( p_index, MAVLINK_MSG_ID_GPS2_RAW, 2 );
 		SetMsgRate( p_index, MAVLINK_MSG_ID_GLOBAL_POSITION_INT, 5 );
 		SetMsgRate( p_index, MAVLINK_MSG_ID_SYS_STATUS, 1 );
+		SetMsgRate( p_index, MAVLINK_MSG_ID_EXTENDED_SYS_STATE, 1 );
 		SetMsgRate( p_index, MAVLINK_MSG_ID_VFR_HUD, 2 );
 		SetMsgRate( p_index, MAVLINK_MSG_ID_SCALED_IMU, 20 );
 		SetMsgRate( p_index, MAVLINK_MSG_ID_SCALED_IMU2, 2 );

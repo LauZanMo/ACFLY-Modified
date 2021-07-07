@@ -39,6 +39,23 @@ static bool Msg01_SYS_STATUS( uint8_t port , mavlink_message_t* msg_sd )
 	);
 	return true;
 }
+static bool Msg245_EXTENDED_SYS_STATE( uint8_t port , mavlink_message_t* msg_sd )
+{
+	if( get_Attitude_MSStatus() != MS_Ready )
+		return false;
+	
+	bool inFlight;
+	get_is_inFlight(&inFlight);
+	mavlink_msg_extended_sys_state_pack_chan(
+		get_CommulinkSysId() ,	//system id
+		get_CommulinkCompId() ,	//component id
+		port , 	//chan
+		msg_sd ,
+		MAV_VTOL_STATE_MC ,
+		inFlight ? MAV_LANDED_STATE_IN_AIR : MAV_LANDED_STATE_ON_GROUND
+	);
+	return true;
+}
 
 static bool Msg26_SCALED_IMU( uint8_t port , mavlink_message_t* msg_sd )
 {
@@ -1173,7 +1190,7 @@ bool (*const Mavlink_Send_Funcs[])( uint8_t port , mavlink_message_t* msg_sd ) =
 	/*242-*/	Msg242_HOME_POSITION	,
 	/*243-*/	0	,
 	/*244-*/	0	,
-	/*245-*/	0	,
+	/*245-*/	Msg245_EXTENDED_SYS_STATE	,
 	/*246-*/	0	,
 	/*247-*/	0	,
 	/*248-*/	0	,

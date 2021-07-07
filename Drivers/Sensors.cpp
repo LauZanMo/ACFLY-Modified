@@ -637,6 +637,7 @@
 	const uint8_t internal_baro_sensor_index = 4;
 	const uint8_t default_rtk_sensor_index = 6;
 	const uint8_t default_gps_sensor_index = 7;
+	const uint8_t default_uwb_sensor_index = 9;
 		
 	static SemaphoreHandle_t Position_Sensors_Mutex[Position_Sensors_Count] = {0};
 	static Position_Sensor* Position_Sensors[Position_Sensors_Count];

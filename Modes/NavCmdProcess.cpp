@@ -294,8 +294,11 @@ static int16_t NavCmd16_WAYPOINT( double freq, uint8_t frame, double params[], N
 						map_projection_project( &global_inf.mp, params[4], params[5], &x, &y );
 						x -= global_inf.HOffset.x;
 						y -= global_inf.HOffset.y;
-						LA = y - global_inf.PositionENU.y;
-						LB = x - global_inf.PositionENU.x;
+						//求LA LB
+						vector3<double> t_pos;
+						get_TargetPosInf( 0, 0, &t_pos, 0 );
+						LA = y - t_pos.y;
+						LB = x - t_pos.x;
 						break;
 					}
 					
@@ -383,7 +386,11 @@ static int16_t NavCmd16_WAYPOINT( double freq, uint8_t frame, double params[], N
 			Position_Control_set_ZLock();
 			double yawTrackErr;
 			Attitude_Control_get_YawTrackErr(&yawTrackErr);
-			if( yawTrackErr < 0.01 )
+			float wp_range = get_WPRange();
+			float yaw_track_err_scale = 1.0f;
+			if( wp_range > 10.0f )
+				yaw_track_err_scale = wp_range * 0.1f;
+			if( yawTrackErr < 0.01*yaw_track_err_scale )
 			{		
 				bool res;
 				switch(frame)
@@ -575,8 +582,11 @@ static int16_t NavCmd20_RETURN_TO_LAUNCH( double freq, uint8_t frame, double par
 				map_projection_project( &global_inf.mp, homeP.x, homeP.y, &x, &y );
 				x -= global_inf.HOffset.x;
 				y -= global_inf.HOffset.y;
-				LA = y - global_inf.PositionENU.y;
-				LB = x - global_inf.PositionENU.x;
+				//求LA LB
+				vector3<double> t_pos;
+				get_TargetPosInf( 0, 0, &t_pos, 0 );
+				LA = y - t_pos.y;
+				LB = x - t_pos.x;
 			}
 			else if( getHomePoint(&homeP) )
 			{	//返航至Local坐标
@@ -605,7 +615,11 @@ TurnYawLocalP:
 			Position_Control_set_ZLock();
 			double yawTrackErr;
 			Attitude_Control_get_YawTrackErr(&yawTrackErr);
-			if( yawTrackErr < 0.01 )
+			float wp_range = get_WPRange();
+			float yaw_track_err_scale = 1.0f;
+			if( wp_range > 10.0f )
+				yaw_track_err_scale = wp_range * 0.1f;
+			if( yawTrackErr < 0.01*yaw_track_err_scale )
 			{	
 				bool res;
 				
@@ -780,8 +794,11 @@ static int16_t NavCmd21_LAND( double freq, uint8_t frame, double params[], NavCm
 						map_projection_project( &global_inf.mp, params[4], params[5], &x, &y );
 						x -= global_inf.HOffset.x;
 						y -= global_inf.HOffset.y;
-						LA = y - global_inf.PositionENU.y;
-						LB = x - global_inf.PositionENU.x;
+						//求LA LB
+						vector3<double> t_pos;
+						get_TargetPosInf( 0, 0, &t_pos, 0 );
+						LA = y - t_pos.y;
+						LB = x - t_pos.x;
 						break;
 					}
 					
@@ -869,7 +886,11 @@ static int16_t NavCmd21_LAND( double freq, uint8_t frame, double params[], NavCm
 			Position_Control_set_ZLock();
 			double yawTrackErr;
 			Attitude_Control_get_YawTrackErr(&yawTrackErr);
-			if( yawTrackErr < 0.01 )
+			float wp_range = get_WPRange();
+			float yaw_track_err_scale = 1.0f;
+			if( wp_range > 10.0f )
+				yaw_track_err_scale = wp_range * 0.1f;
+			if( yawTrackErr < 0.01*yaw_track_err_scale )
 			{		
 				bool res;
 				switch(frame)
@@ -989,6 +1010,7 @@ static int16_t NavCmd21_LAND( double freq, uint8_t frame, double params[], NavCm
 		case 3:
 		{	//降落
 			
+			Position_Control_set_XYLock();
 			//获取对地高度
 			double homeZ;
 			getHomeLocalZ(&homeZ);

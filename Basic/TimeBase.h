@@ -2,6 +2,7 @@
 
 #include "stm32h743xx.h"
 #include <stdint.h>
+#include <stdbool.h>
 #include "FreeRTOS.h"
 #include "task.h"
 
@@ -46,6 +47,12 @@
 			ticks = 1;
 		vTaskDelay(ticks);
 	}
+	
+	bool get_RTC_Updated();
+	
+	//锁定RTC操作
+	bool Lock_RTC();
+	void UnLock_RTC();
 	
 	/*RTC时间获取*/
 		typedef struct
