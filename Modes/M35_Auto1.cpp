@@ -435,11 +435,6 @@ RTL:
 										//转到高度调整任务
 										mission_ind = altitude_adjust;
 									}
-									else
-									{
-										//关闭角度控制器
-										Attitude_Control_Disable();
-									}
 								}
 								else
 								{
@@ -590,21 +585,10 @@ RTL:
 						}
 						else
 						{
-							//判断滞空
-							bool inFlight;
-							get_is_inFlight(&inFlight);
-							if( inFlight==false )
-							{
-								//关闭角度控制器
-								Attitude_Control_Disable();
-							}
-							else
-							{
-								//无指令控制则刹车
-								Position_Control_set_XYLock();
-								Attitude_Control_set_YawLock();
-								Position_Control_set_ZLock();
-							}
+							//无指令控制则刹车
+							Position_Control_set_XYLock();
+							Attitude_Control_set_YawLock();
+							Position_Control_set_ZLock();
 						}
 						
 						break;
