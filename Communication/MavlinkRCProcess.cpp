@@ -865,7 +865,7 @@ static void Msg103_VISION_SPEED_ESTIMATE( uint8_t Port_index , const mavlink_mes
 	vector3<double> velVSlam;
 	velVSlam.x = BodyHeading2ENU_x(msg_rd->x * 100 , msg_rd->y * 100 , sinYaw , cosYaw);
 	velVSlam.y = BodyHeading2ENU_y(msg_rd->x * 100 , msg_rd->y * 100 , sinYaw , cosYaw);
-  	velVSlam.z = msg_rd->z * 100;
+  velVSlam.z = msg_rd->z * 100;
 	PositionSensorUpdateVel(default_vslam_vel_index, velVSlam, true);
 }
 
@@ -969,8 +969,6 @@ static void Msg258_PLAY_TUNE( uint8_t Port_index , const mavlink_message_t* msg 
 	const mavlink_play_tune_t* msg_rd = (mavlink_play_tune_t*)msg->payload64;
 	
 	bool state = (bool)msg_rd->tune[0];
-	unsigned short freq = (((unsigned short)msg_rd->tune[1]) << 8) + (unsigned short)msg_rd->tune[2];
-	set_BuzzerFreq(freq);
 	set_BuzzerOnOff(state);
 }
 
